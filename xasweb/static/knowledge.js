@@ -222,15 +222,23 @@
   function featureCard(item, resume) {
     const featured = text('article',null,'featured-card');
     const cover = text('div',null,'book-cover');
+    const spectrumCover = item.id === 'guide-G22';
     cover.setAttribute('aria-hidden','true');
-    cover.append(text('span','XAS','book-cover-title'));
+    cover.append(text('span', spectrumCover ? '数据处理' : 'XAS', 'book-cover-title'));
+    if (spectrumCover) {
+      const img = text('img');
+      img.src = '/static/knowledge-znse-cover.png';
+      img.width = 400; img.height = 144; img.alt = '';
+      cover.append(img);
+    }
     const imprint = text('span',null,'book-imprint');
-    imprint.append(text('em','χ'),text('span','WebXAS'));
+    imprint.append(text('em', spectrumCover ? 'μ(E)' : 'χ'), text('span',item.id.startsWith('guide-') ? item.id.slice(6) : 'WebXAS'));
     cover.append(imprint);
     const copy = text('div');
     const label = resume ? '继续阅读' : '精选章节';
+    const title = spectrumCover && !resume ? '从原始通道到可重绘曲线' : item.title;
     const heading = text('h2');
-    heading.append(entryLink(item,'feature-link'));
+    heading.append(entryLink(item,'feature-link',title));
     copy.append(text('p',label,'feature-label'),heading);
     featured.append(cover,copy);
     return featured;

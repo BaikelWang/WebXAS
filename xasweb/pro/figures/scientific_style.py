@@ -17,34 +17,52 @@ PALETTES = {
 }
 
 
-@lru_cache(maxsize=1)
-def times_font_files():
+@lru_cache(maxsize=8)
+def font_files(family):
     from matplotlib import font_manager
     from matplotlib.ft2font import FT2Font
     paths = {}
     for key, style, weight in [('regular','normal','normal'),('italic','italic','normal'),
                                 ('bold','normal','bold'),('bold_italic','italic','bold')]:
         try:
-            path=font_manager.findfont(font_manager.FontProperties(family=FONT_FAMILY,style=style,weight=weight),
+            path=font_manager.findfont(font_manager.FontProperties(family=family,style=style,weight=weight),
                                        fallback_to_default=False)
             font=FT2Font(path)
-            if font.family_name!=FONT_FAMILY or not Path(path).is_file():raise ValueError('foreign font')
+            if font.family_name!=family or not Path(path).is_file():raise ValueError('foreign font')
             paths[key]=path
         except (ValueError,OSError,RuntimeError) as exc:
             raise ProjectError('figure_font_missing',
-                '科研绘图需要系统 Times New Roman（含常规、斜体、粗体）；未找到时不会替换成其它字体。') from exc
+                f'系统缺少 {family} 字体。') from exc
     return paths
 
 
-def rc_params(size):
-    times_font_files()
-    return {'font.family':[FONT_FAMILY],'font.serif':[FONT_FAMILY],'font.sans-serif':[FONT_FAMILY],
+def times_font_files():
+    return font_files(FONT_FAMILY)
+
+
+times_font_files.cache_clear = font_files.cache_clear
+
+
+@lru_cache(maxsize=1)
+def nature_font():
+    for family in ('Arial', 'Helvetica', 'Liberation Sans'):
+        try:
+            font_files(family)
+            return family
+        except ProjectError:
+            continue
+    raise ProjectError('figure_font_missing', '缺少适用的无衬线科研绘图字体。')
+
+
+def rc_params(size, family=FONT_FAMILY):
+    font_files(family)
+    return {'font.family':[family],'font.serif':[family],'font.sans-serif':[family],
         'font.size':size,'axes.labelsize':size,'xtick.labelsize':size,'ytick.labelsize':size,
         'legend.fontsize':size,'svg.fonttype':'none','pdf.fonttype':42,'ps.fonttype':42,
         'pdf.use14corefonts':False,'text.usetex':False,'mathtext.fontset':'custom',
-        'mathtext.rm':FONT_FAMILY,'mathtext.it':FONT_FAMILY+':italic',
-        'mathtext.bf':FONT_FAMILY+':bold','mathtext.bfit':FONT_FAMILY+':bold:italic',
-        'mathtext.sf':FONT_FAMILY,'mathtext.tt':FONT_FAMILY,'mathtext.cal':FONT_FAMILY,
+        'mathtext.rm':family,'mathtext.it':family+':italic',
+        'mathtext.bf':family+':bold','mathtext.bfit':family+':bold:italic',
+        'mathtext.sf':family,'mathtext.tt':family,'mathtext.cal':family,
         'mathtext.fallback':None,'axes.unicode_minus':True,'axes.linewidth':.8,
         'xtick.direction':'in','ytick.direction':'in','xtick.top':True,'ytick.right':True,
         'xtick.major.size':3.5,'ytick.major.size':3.5,'xtick.major.width':.75,'ytick.major.width':.75,
@@ -79,6 +97,11 @@ class EnglishText:
             while any(row['rendered']==text and (row['original']!=original or row.get('source_identity')!=(None if identity is None else str(identity))) for row in self.aliases):
                 length+=2
                 text=f'{prefix}-{digest[:length]}'
+        # Older licensed core fonts lack some Unicode superscript glyphs.
+        # MathText uses the same audited font and a semantic exponent.
+        if '$' not in text:
+            superscript = str.maketrans('⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺','0123456789-+')
+            text = re.sub('[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+', lambda m: '$^{'+m[0].translate(superscript)+'}$', text)
         if text!=original:
             row={'role':role,'original':original,'rendered':text}
             if identity is not None:row['source_identity']=str(identity)
@@ -89,6 +112,8 @@ class EnglishText:
 def curve_style(name, index, panel, style):
     palette=PALETTES[style.palette]
     width=style.linewidth
+    if panel.get('distinct_curves'):
+        return palette[index%len(palette)], '-' if index<len(palette) else '--', width
     if panel.get('dataset_ids'):
         identities=sorted(set(panel['dataset_ids']))
         position=identities.index(panel['dataset_ids'][index])
@@ -111,13 +136,13 @@ def style_axis(axis, size):
     axis.yaxis.labelpad=5
 
 
-def audit_fonts(figure):
+def audit_fonts(figure, family=FONT_FAMILY):
     """Verify every actual Text and math glyph uses Times, without fallback."""
     from matplotlib import font_manager
     from matplotlib.ft2font import FT2Font
     from matplotlib.mathtext import MathTextParser
     from matplotlib.text import Text
-    paths=times_font_files()
+    paths=font_files(family)
     parser=MathTextParser('path')
     for text in figure.findobj(Text):
         value=text.get_text()
@@ -125,16 +150,16 @@ def audit_fonts(figure):
         if CJK.search(value):raise ProjectError('figure_text_language','图件中残留未转换的中文标签。')
         actual=font_manager.findfont(text.get_fontproperties(),fallback_to_default=False)
         font=FT2Font(actual)
-        if font.family_name!=FONT_FAMILY:
-            raise ProjectError('figure_font_mismatch','图件文字实际解析为非 Times New Roman 字体。')
-        if text.get_usetex():raise ProjectError('figure_font_mismatch','图件不可使用外部 TeX 字体替代 Times New Roman。')
+        if font.family_name!=family:
+            raise ProjectError('figure_font_mismatch','图件文字实际解析为非指定字体。')
+        if text.get_usetex():raise ProjectError('figure_font_mismatch','图件不可使用外部 TeX 字体替代指定字体。')
         if value.count('$')>=2 and text.get_parse_math():
             parsed=parser.parse(value,dpi=72,prop=text.get_fontproperties())
-            if any(glyph[0].family_name!=FONT_FAMILY for glyph in parsed.glyphs):
-                raise ProjectError('figure_font_mismatch','数学符号触发了非 Times New Roman 字体。')
+            if any(glyph[0].family_name!=family for glyph in parsed.glyphs):
+                raise ProjectError('figure_font_mismatch','数学符号触发了非指定字体。')
         else:
             missing={char for char in value if not char.isspace() and ord(char) not in font.get_charmap()}
-            if missing:raise ProjectError('figure_font_glyph_missing','Times New Roman 缺少所需字形：'+''.join(sorted(missing)))
-    return {'family':FONT_FAMILY,'files':{role:{'filename':Path(path).name,
+            if missing:raise ProjectError('figure_font_glyph_missing','图件字体缺少所需字形：'+''.join(sorted(missing)))
+    return {'family':family,'files':{role:{'filename':Path(path).name,
             'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest()} for role,path in paths.items()},
-            'all_text_resolved_to_times':True,'fallback_allowed':False,'font_files_redistributed':False}
+            'all_text_resolved_to_times':family==FONT_FAMILY,'all_text_resolved_to_declared_family':True,'fallback_allowed':False,'font_files_redistributed':False}

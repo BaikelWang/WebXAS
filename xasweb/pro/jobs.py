@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+from xasweb import _runtime
 from pathlib import Path
 import signal
 import subprocess
@@ -148,7 +149,7 @@ class _ProcessTree:
 class JobService:
     def __init__(self, root: str | Path | None = None, *, command_factory: Callable | None = None,
                  poll_interval: float = 0.05):
-        default = Path(__file__).resolve().parents[3] / ".runtime" / "jobs"
+        default = _runtime / 'jobs'
         self.root = Path(root or os.environ.get("XASWEB_JOB_ROOT", default)).resolve()
         if os.name == "nt" and not str(self.root).startswith("\\\\?\\"):
             name = str(self.root)
@@ -315,6 +316,8 @@ class JobService:
                 inherited_path = kwargs["env"].get("PYTHONPATH", "")
                 kwargs["env"]["PYTHONPATH"] = app_root + (os.pathsep + inherited_path if inherited_path else "")
                 kwargs["env"]["XRAYLARCH_NO_PLOT"] = "1"
+                if self._command_factory is None:
+                    kwargs["env"]["WEBXAS_DISPOSABLE_JOB"] = "1"
                 if os.name == "nt":
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
                 else:

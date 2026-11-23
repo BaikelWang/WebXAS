@@ -81,8 +81,8 @@ def _existing_processing(store, project, dataset):
 
 
 def run_workflow(store, project_id, intent, expected_revision, context=None, plan_fingerprint=None):
-    from .auto_models import run_known_model
-    from .larch_adapter import current_engine_versions, current_source_sha256
+    from .auto_models import resolve_model, run_known_model
+    from .larch_adapter import _processing_identity, current_engine_versions, current_source_sha256
     from .recipes import descriptive_recipe
     from .series import build_series
     from .xanes import extract_features, fit_reference_combination
@@ -180,12 +180,31 @@ def run_workflow(store, project_id, intent, expected_revision, context=None, pla
             values['issues'].append(_issue(exc))
             values['steps'].append({'stage': 'repeat_scans', 'state': 'needs_input', 'code': getattr(exc, 'code', 'repeat_merge_failed'), 'finished_at': utc_now()})
             all_ids = []
+    bound_processing = {}
+    if 'structural_fit' in operations and (intent.model_id or intent.model_recipe_id):
+        try:
+            reviewed, _ = resolve_model(project, intent)
+        except ProjectError:
+            pass  # The fit branch records the model error alongside descriptive results.
+        else:
+            bound_processing = {b.dataset_id: b.processing_revision_id for b in reviewed.bindings}
+    snapshots = {pp.id: pp for pp in project.processing}
     for index, did in enumerate(all_ids):
         stage = {'stage': 'processing', 'dataset_id': did, 'state': 'running', 'started_at': utc_now()}
         if context:
             context.heartbeat(f'processing {index + 1}/{len(all_ids)}: {did}', .05 + .5 * index / len(all_ids))
         try:
-            if intent.task == 'plot' or intent.use_existing_processing:
+            if did in bound_processing:
+                pp = snapshots.get(bound_processing[did])
+                if pp is None:
+                    raise ProjectError('processing_required', '所选模型关联的处理版本缺失。', did)
+                _processing_identity(datasets[did], pp)
+                if intent.processing_overrides or intent.calibration_ids.get(did, pp.calibration_id) != pp.calibration_id:
+                    raise ProjectError('model_processing_override', '请先在专业工作台应用新的预处理设置或校准，并保存新模型。', did)
+                created, issues = [], []
+                decision = {'stage': 'processing', 'rule': 'reviewed_model_snapshot', 'dataset_id': did,
+                            'reason': 'Reused the processing revision bound to the reviewed model.', 'selected': pp.id}
+            elif intent.task == 'plot' or intent.use_existing_processing:
                 try:
                     pp = _existing_processing(store, project, datasets[did])
                     created, issues = [], []
@@ -286,6 +305,34 @@ def run_workflow(store, project_id, intent, expected_revision, context=None, pla
         except (ValueError, RuntimeError) as exc:
             needs_input = True
             values['issues'].append(_issue(exc))
+    if 'preedge' in operations:
+        from .xanes import preedge_integral
+        from .projects import canonical
+        values['preedge_results']=[]
+        for did in intent.dataset_ids:
+            try:
+                bounds=intent.preedge_windows or {}
+                if did not in processing or set(bounds)!={'left_eV','peak_eV','right_eV'}:
+                    raise ProjectError('preedge_windows','需要有效处理版本及三个已确认能量窗口。', did)
+                integral=preedge_integral(store,project_id,processing[did],**bounds)
+                ref=store.put_asset(project_id,canonical(integral),'preedge.json')
+                values['preedge_results'].append(dict(dataset_id=did,artifact=ref.model_dump(mode='json')))
+            except (ValueError,RuntimeError) as exc:
+                needs_input=True
+                values['issues'].append(_issue(exc,did))
+    if 'decomposition' in operations:
+        from .decomposition import decompose_series
+        from .projects import canonical
+        try:
+            if any(did not in processing for did in intent.dataset_ids):
+                raise ProjectError('decomposition_processing', '部分输入缺少有效处理版本。')
+            result = decompose_series(store, project, [processing[did] for did in intent.dataset_ids], window_eV=intent.decomposition_window_eV, n_components=intent.decomposition_components)
+            values['decomposition'] = store.put_asset(project_id, canonical(result), 'decomposition.json').model_dump(mode='json')
+            values['steps'].append({'stage':'decomposition','state':'succeeded','finished_at':utc_now()})
+        except ProjectError as exc:
+            needs_input = True
+            values['issues'].append(_issue(exc))
+            values['steps'].append({'stage':'decomposition','state':'needs_input','code':exc.code,'finished_at':utc_now()})
     values['state'] = 'needs_input' if needs_input else 'partial' if failed else 'succeeded'
     values['finished_at'] = utc_now()
     for issue in values['issues']:

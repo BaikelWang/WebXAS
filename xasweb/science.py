@@ -55,7 +55,7 @@ def software_identity():
             "source_sha256": sources, "larch_source_sha256": library_sources}
 
 
-def analyze(request: AnalysisRequest):
+def analyze(request: AnalysisRequest, *, normalization_only=False):
     p = request.parameters
     energy, mu, source = construct_mu(request.raw_text, request.mapping, p.energy_shift)
     if np.any(np.diff(energy) < TINY_ENERGY):
@@ -70,6 +70,9 @@ def analyze(request: AnalysisRequest):
     e0 = float(find_e0(energy, mu)) if p.e0 is None else p.e0
     if not energy[0] < e0 < energy[-1]:
         raise InputError("E0 must lie strictly inside the measured energy range.")
+    ek0 = e0 if p.ek0 is None else p.ek0
+    if not energy[0] < ek0 < energy[-1]:
+        raise InputError("The E-to-k origin must lie strictly inside the measured energy range.")
     counts = {}
     for name, a, b, minimum in [("pre-edge", p.pre1, p.pre2, 5),
                                 ("normalization", p.norm1, p.norm2, max(5, p.nnorm + 2))]:
@@ -84,9 +87,9 @@ def analyze(request: AnalysisRequest):
     near_edge = energy[(energy >= e0 - 15) & (energy <= e0 + 30)]
     if len(near_edge) < 8 or np.max(np.diff(near_edge), initial=0) > 5:
         notices.append("Sparse near-edge sampling: inspect E0 and normalization carefully.")
-    k_available = float(np.sqrt((energy[-1] - e0) * ETOK))
+    k_available = float(np.sqrt((energy[-1] - ek0) * ETOK))
     k_grid_max = np.floor(k_available / KSTEP) * KSTEP
-    if p.kmax + p.dk / 2 > k_grid_max + 1e-10:
+    if not normalization_only and p.kmax + p.dk / 2 > k_grid_max + 1e-10:
         raise InputError(f"The complete FT taper ends at {p.kmax + p.dk / 2:.2f} Å⁻¹, "
                          f"but data support only {k_grid_max:.2f} Å⁻¹. Lower kmax or dk.")
     bkg_kmax = min(k_available, p.bkg_kmax) if p.bkg_kmax is not None else k_available
@@ -96,17 +99,19 @@ def analyze(request: AnalysisRequest):
         "pre_edge": {"e0": e0, "pre1": p.pre1, "pre2": p.pre2, "norm1": p.norm1,
                      "norm2": p.norm2, "nnorm": p.nnorm, "nvict": 0, "npre": 1,
                      "step": None, "iscalc": False, "make_flat": True},
-        "autobk": {"e0": e0, "rbkg": p.rbkg, "kmin": 0, "kmax": bkg_kmax,
+        "autobk": {"ek0": ek0, "rbkg": p.rbkg, "kmin": 0, "kmax": bkg_kmax,
                    "kweight": p.bkg_kweight, "dk": 0.1, "win": "hanning",
                    "kstep": KSTEP, "nfft": NFFT, "nknots": None,
-                   "nclamp": 2, "clamp_lo": 1, "clamp_hi": 1,
-                   "calc_uncertainties": False, "k_std": None, "chi_std": None,
+                   "nclamp": p.bkg_nclamp, "clamp_lo": p.bkg_clamp_lo, "clamp_hi": p.bkg_clamp_hi,
+                   "calc_uncertainties": p.bkg_uncertainty, "k_std": None, "chi_std": None,
                    "pre_edge_kws": None, "err_sigma": 1},
         "xftf": {"kmin": p.kmin, "kmax": p.kmax, "dk": p.dk, "dk2": p.dk,
                  "kweight": p.kweight, "window": "hanning", "kstep": KSTEP,
                  "nfft": NFFT, "rmax_out": 6, "with_phase": False},
     }
     g = Group(energy=energy, mu=mu)
+    if normalization_only:
+        calls = {'pre_edge': calls['pre_edge']}
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         pre_edge(energy, mu, group=g, **calls["pre_edge"])
@@ -117,19 +122,26 @@ def analyze(request: AnalysisRequest):
             raise InputError("The fitted edge step is not positive and well resolved. Check columns, E0 and windows.")
         if not np.isclose(g.e0, e0, atol=1e-8, rtol=0):
             raise InputError("Larch changed the requested E0; choose a supported value explicitly.")
-        calls["autobk"]["edge_step"] = float(g.edge_step)
-        autobk(energy, mu, group=g, **calls["autobk"])
-        xftf(g.k, g.chi, group=g, **calls["xftf"])
+        if not normalization_only:
+            calls["autobk"]["edge_step"] = float(g.edge_step)
+            autobk(energy, mu, group=g, **calls["autobk"])
+            xftf(g.k, g.chi, group=g, **calls["xftf"])
         notices += list(dict.fromkeys(str(w.message) for w in caught))
-    names = ("energy", "mu", "pre_edge", "post_edge", "norm", "flat", "bkg", "chie", "k", "chi",
-             "kwin", "r", "chir_re", "chir_im", "chir_mag")
+    names = ("energy", "mu", "pre_edge", "post_edge", "norm", "flat")
+    if not normalization_only:
+        names += ("bkg", "chie", "k", "chi", "kwin", "r", "chir_re", "chir_im", "chir_mag")
+    if p.bkg_uncertainty and not normalization_only:
+        delta_chi = np.asarray(getattr(g, 'delta_chi', []))
+        if delta_chi.shape != g.chi.shape or not np.isfinite(delta_chi).all() or np.any(delta_chi < 0):
+            raise InputError("AUTOBK did not produce usable conditional spline uncertainty for this spectrum.")
+        names += ('delta_chi',)
     arrays = {}
     for name in names:
         value = np.asarray(getattr(g, name))
         if not np.isfinite(value).all():
             raise InputError(f"Larch returned non-finite {name}; no analysis was exported.")
         arrays[name] = value.tolist()
-    if len(g.k) < 2 or p.kmax + p.dk / 2 > g.k[-1] + 1e-10:
+    if not normalization_only and (len(g.k) < 2 or p.kmax + p.dk / 2 > g.k[-1] + 1e-10):
         raise InputError("The actual AUTOBK output does not support the complete FT taper.")
     details = getattr(g, "autobk_details", Group())
     background_details = {}
@@ -148,6 +160,16 @@ def analyze(request: AnalysisRequest):
                                            if s["sha256"] == source["sha256"]), None)
     request_recipe = request.model_dump(exclude={"raw_text", "assessment_token"})
     identity = software_identity()
+    metrics = {"e0_eV": e0, "e0_method": "Larch derivative maximum" if p.e0 is None else "user supplied",
+               "edge_step": float(g.edge_step), "edge_step_evaluation_energy_eV": float(energy[ie0]),
+               "energy_min": float(energy[0]), "energy_max": float(energy[-1]), "fit_window_points": counts}
+    if normalization_only:
+        request_recipe['stage'] = 'normalization_only'
+        notices = [n for n in notices if not n.startswith(('R is ', 'AUTOBK ', 'Background processing '))]
+    else:
+        metrics.update(ek0_eV=ek0, autobk_spline_uncertainty=p.bkg_uncertainty, k_available=k_available,
+                       k_grid_max=float(g.k[-1]), r_grid_spacing=float(g.r[1]-g.r[0]),
+                       nominal_delta_r=float(np.pi/(2*(p.kmax-p.kmin))))
     run_id = hashlib.sha256(canonical_json({"source": source["sha256"], "recipe": request_recipe,
                                            "software": identity})).hexdigest()
     return {"schema_version": 1, "run_id": run_id, "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -159,16 +181,10 @@ def analyze(request: AnalysisRequest):
                                 "edge_step_evaluation": "nearest measured energy to E0",
                                 "ft_window_endpoints": "Larch snaps the Hanning endpoints to the uniform k grid",
                                 "chi_interpolation": "Larch AUTOBK spline evaluation to uniform k grid",
-                                "background_domain": "bkg below E0 is Larch's placeholder equal to mu; EXAFS interpretation is post-edge only",
+                                "background_domain": "bkg below the E-to-k origin is Larch's placeholder equal to mu; EXAFS interpretation is post-edge only",
                                 "ft_convention": "(dk/sqrt(pi)) * sum(chi * k^weight * window * exp(-2 i k R))"},
             "arrays": arrays, "warnings": notices,
-            "metrics": {"e0_eV": e0, "e0_method": "Larch derivative maximum" if p.e0 is None else "user supplied",
-                        "edge_step": float(g.edge_step), "edge_step_evaluation_energy_eV": float(energy[ie0]),
-                        "k_available": k_available,
-                        "k_grid_max": float(g.k[-1]), "energy_min": float(energy[0]),
-                        "energy_max": float(energy[-1]), "fit_window_points": counts,
-                        "r_grid_spacing": float(g.r[1] - g.r[0]),
-                        "nominal_delta_r": float(np.pi / (2 * (p.kmax - p.kmin)))},
+            "metrics": metrics,
             "array_units": {"energy": "eV", "mu": "relative absorbance", "norm": "dimensionless",
                             "k": "angstrom^-1", "chi": "dimensionless", "r": "angstrom (phase uncorrected)",
                             "chir": f"angstrom^-{p.kweight + 1}"}}

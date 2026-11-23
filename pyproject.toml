@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xasweb-pilot"
-version = "0.5.2rc1"
+version = "0.5.2rc2"
 description = "An inspectable local web workflow for XAS reduction with Larch"
 requires-python = ">=3.12"
 dependencies = [
@@ -19,4 +19,10 @@ include = ["xasweb*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-xasweb = ["static/*", "knowledge/catalog.json", "data/pro-demo.zip", "data/PARSEQ-XAS-LICENSE.txt"]
+xasweb = ["static/*", "knowledge/catalog.json", "gallery/*", "data/pro-demo.zip", "data/PARSEQ-XAS-LICENSE.txt"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1", "httpx==0.28.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["package/app/tests"]

@@ -114,6 +114,35 @@ def validate_snapshot(spec):
     return compiled
 
 
+def validate_fit_input(store, project_id, dataset, processing, binding, noise_override=None):
+    """Use the same measured-support and noise gate in preflight and the worker."""
+    _processing_identity(dataset, processing)
+    if not {'k', 'chi'} <= processing.arrays.keys():
+        raise FitError('missing_chi', '处理版本没有 k/χ 数组。', processing.id)
+    k = load_array(store, project_id, processing.arrays['k'])
+    chi = load_array(store, project_id, processing.arrays['chi'])
+    if k.ndim != 1 or chi.shape != k.shape or len(k) < 8 or k[0] < 0 or np.any(np.diff(k) <= 0):
+        raise FitError('invalid_fit_grid', '结构拟合需要递增的非负 k 网格和对应 χ(k)。', dataset.id)
+    t = binding.transform
+    # Require the full declared taper to lie on the measured, processed domain.
+    lo, hi = t.kmin - t.dk / 2, t.kmax + t.dk / 2
+    if lo < k[0] - 1e-10 or hi > k[-1] + 1e-10:
+        raise FitError('fit_coverage', f'拟合含渐变窗需覆盖 {lo:.3f}–{hi:.3f} Å⁻¹，处理版本仅支持 '
+                       f'{k[0]:.3f}–{k[-1]:.3f} Å⁻¹。请显式缩小窗口或重选处理版本。', dataset.id)
+    if k[-1] > t.kstep * (t.nfft // 2 - 1):
+        raise FitError('fft_coverage', 'FFT 网格不足以覆盖已处理 k 范围。', dataset.id)
+    noise = noise_override if noise_override is not None else (
+        binding.noise if binding.noise.source != 'unknown' else processing.noise)
+    noise = validate_noise(store, project_id, noise, processing.id, len(k))
+    if noise.source == 'unknown':
+        raise FitError('noise_unspecified', '请为定量拟合声明实验噪声或选择带假设的估计。', dataset.id)
+    if noise.source == 'engine_estimate':
+        lo_r, hi_r = noise.estimation_range or (15., 30.)
+        if lo_r < 0 or hi_r > np.pi / (2 * t.kstep):
+            raise FitError('noise_estimation_range', '噪声估计区间必须在 FFT R 域内。', dataset.id)
+    return k, chi, noise
+
+
 def _prepare(store,project_id,spec,compiled,overrides=None):
     from larch import Group
     from larch.fitting import group2params
@@ -126,17 +155,8 @@ def _prepare(store,project_id,spec,compiled,overrides=None):
     for binding in spec.model.bindings:
         d=datasets[binding.dataset_id];p=processing[binding.processing_revision_id]
         store.read_asset(project_id,d.raw_file)
-        if not {"k","chi"}<=p.arrays.keys():raise FitError("missing_chi","Processing revision has no k/chi arrays.",p.id)
-        k=load_array(store,project_id,p.arrays["k"]);chi=load_array(store,project_id,p.arrays["chi"])
+        k,chi,noise=validate_fit_input(store,project_id,d,p,binding)
         t=binding.transform
-        if k.ndim!=1 or chi.shape!=k.shape or len(k)<8 or k[0]<0 or np.any(np.diff(k)<=0):
-            raise FitError("invalid_fit_grid","Fitting requires finite, increasing nonnegative k and matching chi.",d.id)
-        if t.kmin-t.dk/2<k[0]-1e-10 or t.kmax+t.dk/2>k[-1]+1e-10:
-            raise FitError("fit_coverage","Processed spectrum does not cover the complete fit taper.",d.id)
-        if k[-1]>t.kstep*(t.nfft//2-1):raise FitError("fft_coverage","FFT grid is too short for the data k range.",d.id)
-        noise=binding.noise if binding.noise.source!="unknown" else p.noise
-        noise=validate_noise(store,project_id,noise,p.id,len(k))
-        if noise.source=="unknown":raise FitError("noise_unspecified","Select or estimate noise explicitly before quantitative fitting.",d.id)
         epsilon=None
         if noise.source=="explicit_scalar":epsilon=noise.value
         elif noise.source=="explicit_array":
@@ -154,11 +174,15 @@ def _prepare(store,project_id,spec,compiled,overrides=None):
             if t.kmax+t.dk/2>float(np.max(fp._feffdat.k))+1e-10:
                 raise FitError("path_k_coverage","FEFF path does not cover the fit k range.",asset.id)
             fps[pb.id]=fp
-        ds=feffit_dataset(data=Group(k=k,chi=chi,groupname=d.id),paths=fps,transform=feffit_transform(**t.model_dump(mode="json")),epsilon_k=epsilon)
+        data = Group(k=k, chi=chi, groupname=d.id)
+        includes_background = noise.source == 'engine_estimate' and 'delta_chi' in p.arrays
+        if includes_background:
+            data.delta_chi = load_array(store, project_id, p.arrays['delta_chi'])
+            if data.delta_chi.shape != chi.shape or np.any(data.delta_chi < 0):
+                raise FitError('background_uncertainty', 'AUTOBK 条件不确定度与 χ(k) 不匹配。', p.id)
+        ds=feffit_dataset(data=data,paths=fps,transform=feffit_transform(**t.model_dump(mode="json")),epsilon_k=epsilon)
         if noise.source=="engine_estimate":
             limits=noise.estimation_range or [15.,30.]
-            if limits[0]<0 or limits[1]>np.pi/(2*t.kstep):
-                raise FitError("noise_estimation_range","Noise estimation must lie inside the FFT R domain.",d.id)
             native_estimate=ds.estimate_noise
             def declared_estimate(chi=None,rmin=15.,rmax=30.,all_kweights=True,
                                   _native=native_estimate,_limits=tuple(limits),_dataset_id=d.id,_dataset=ds):
@@ -174,7 +198,8 @@ def _prepare(store,project_id,spec,compiled,overrides=None):
             # prepare_fit invokes this once. Explicit sigma follows the native
             # set_epsilon_k route; estimated noise follows native Parseval scaling.
             ds.estimate_noise=declared_estimate
-        resolved_noise.append({"dataset_id":d.id,"declaration":noise.model_dump(mode="json")})
+        resolved_noise.append({"dataset_id":d.id,"declaration":noise.model_dump(mode="json"),
+                               'autobk_conditional_spline_included': includes_background})
         output.append(ds)
     return parameters,output,resolved_noise
 

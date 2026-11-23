@@ -56,6 +56,9 @@ async def parameter_error(_, exc):
 lock = threading.RLock()  # Nested workflow stages share Larch's process-global state.
 static = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static), name="static")
+validation_root = os.environ.get("WEBXAS_VALIDATION_ROOT", static.parent / "gallery")
+if validation_root and Path(validation_root).is_dir():
+    app.mount("/validation", StaticFiles(directory=validation_root), name="validation")
 
 
 @app.exception_handler(InputError)
@@ -76,6 +79,11 @@ def professional_index():
 @app.get('/auto')
 def automatic_index():
     return FileResponse(static / 'auto.html')
+
+
+@app.get('/methods')
+def method_index():
+    return FileResponse(static / 'methods.html')
 
 
 @app.get('/knowledge')

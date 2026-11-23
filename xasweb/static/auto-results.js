@@ -8,6 +8,11 @@ function metricValue(m) {
 }
 function moduleTitle(f) {
   const method=f.insight?.method?.figure_method||{};
+  if(method.quantity==='normalized_difference')return '归一化近边差谱';
+  if(method.quantity==='reference_coefficients')return '参考组分系数';
+  if(method.quantity==='objective_residual')return '拟合目标残差';
+  if(method.quantity==='preedge_integral')return method.panel_title;
+  if(f.family==='F13')return f.title;
   if(f.family==='F07')return `${String(method.space).toLowerCase()==='r'?'R':'k'} 空间${method.source_panel_index>0?'残差':'拟合'}`;
   if(f.family==='F08'&&method.projection)return '结构示意 · '+method.projection;
   return FAMILY_NAMES[f.family]||f.title;
@@ -21,15 +26,18 @@ function figureCard(f,index) {
   const data=(f.data_files||[]).map(n=>`<a href="${fileURL(n)}" download>${esc(n.split('/').at(-1))}</a>`).join('');
   const display=i.display||{summary:'历史结果未保存逐图解读。',metrics:[],notices:[]};
   const metrics=(display.metrics||[]).filter(m=>m.value!=null);
+  const methodSection=({F01:'absorption',F02:'normalization',F03:'edge',F04:'fourier',F05:'fourier',F06:'wavelet',F07:'structure',F08:'structure',F09:'lcf',F10:'series',F11:'structure',F13:'decomposition'})[f.family]||'normalization';
   const fullMetrics=(i.metrics||[]).filter(m=>m.value!=null);
+  const basis=i.method_basis;
+  const refs=(basis?.references||[]).filter(ref=>ref.url?.startsWith('https://')).map(ref=>`<a href="${esc(ref.url)}" target="_blank" rel="noopener noreferrer">${esc(ref.label)}</a>`).join(' · ');
   return `<article class="figure-card" id="result-${esc(f.id)}" data-figure="${esc(f.id)}">
     <div class="figure-heading"><h3 title="${esc(f.title)}">${esc(moduleTitle(f))}</h3><span class="sample-badge" title="${esc(sample)}">${esc(sample)}</span></div>
     <button class="figure-open" data-zoom="${esc(f.id)}" aria-label="放大查看 ${esc(f.title)}"><img loading="lazy" decoding="async" src="${previewURL(f)}" alt="${esc(f.title)}"><span>放大查看 ↗</span></button>
     <div class="figure-analysis">${display.summary?`<p class="result-text">${esc(display.summary)}</p>`:''}
-    ${metrics.length?`<div class="metrics">${metrics.map(m=>`<div><span>${esc(m.label)}</span><strong>${esc(metricValue(m))}</strong></div>`).join('')}</div>`:''}
+    ${metrics.length?`<div class="metrics">${metrics.slice(0,2).map(m=>`<div><span>${esc(m.label)}</span><strong>${esc(metricValue(m))}</strong></div>`).join('')}</div>`:''}
     ${(display.notices||[]).length?`<div class="figure-notices">${display.notices.map(t=>`<p>${esc(t)}</p>`).join('')}</div>`:''}</div>
     <div class="figure-footer"><div class="download-actions"><details class="download-menu"><summary>↓ 下载图片</summary><div>${links||'<span>请重新生成图件</span>'}</div></details><details class="download-menu"><summary>↓ 下载该图数据</summary><div>${data||'<span>此图没有独立数据文件</span>'}</div></details></div>
-    <details class="figure-source"><summary>分析记录</summary>${fullMetrics.length?`<dl class="metric-definitions">${fullMetrics.map(m=>`<dt>${esc(m.label)} · ${esc(metricValue(m))}</dt><dd>${esc(m.basis||'')}</dd>`).join('')}</dl>`:''}${(i.observations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}${(i.limitations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}<details><summary>来源信息</summary><pre>${esc(JSON.stringify({workflow_id:S.delivery.workflow_id,figure_id:f.id,method:i.method,sources:i.sources||f.sources},null,2))}</pre></details></details></div>
+    <details class="figure-source"><summary>本图参数</summary><a href="/methods#${methodSection}" target="_blank" rel="noopener">算法与验证 ↗</a>${basis?`<p>${esc(basis.summary)}</p>`:''}${refs?`<p>${refs}</p>`:''}${fullMetrics.length?`<dl class="metric-definitions">${fullMetrics.map(m=>`<dt>${esc(m.label)} · ${esc(metricValue(m))}</dt><dd>${esc(m.basis||'')}</dd>`).join('')}</dl>`:''}${(i.observations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}${(i.limitations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}<details><summary>来源信息</summary><pre>${esc(JSON.stringify({workflow_id:S.delivery.workflow_id,figure_id:f.id,method:i.method,sources:i.sources||f.sources},null,2))}</pre></details></details></div>
   </article>`;
 }
 function renderFigureCards() {

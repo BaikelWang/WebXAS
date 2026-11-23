@@ -433,7 +433,7 @@ def prepare_repeat_merges(store, project, intent):
         'alternatives': records}
 
 
-def propose_parameters(store, project, dataset, overrides=None, conditions=None, calibration_id=None):
+def propose_parameters(store, project, dataset, overrides=None, conditions=None, calibration_id=None, *, normalization_only=False):
     """Select only measured windows. Return Parameters, mask, issues, evidence."""
     overrides, conditions = dict(overrides or {}), dict(conditions or {})
     x, y = inspect_input(store, project.id, dataset)
@@ -448,7 +448,7 @@ def propose_parameters(store, project, dataset, overrides=None, conditions=None,
         if not calibration.applicability_note:
             issues.append(_issue('calibration_applicability', 'Energy calibration has no applicability note; inspect its reference conditions.', dataset.id))
     if dataset.kind == 'chi':
-        if calibration_id or overrides.get('energy_shift', 0) != 0:
+        if calibration_id or overrides.get('energy_shift', 0) != 0 or overrides.get('ek0') is not None:
             raise ProjectError('chi_energy_shift', 'chi(k) cannot be recalibrated by an energy offset.', dataset.id)
         span = float(x[-1])
         dk = float(overrides.get('dk', 1.0))
@@ -511,16 +511,21 @@ def propose_parameters(store, project, dataset, overrides=None, conditions=None,
     reversals = (slopes[:-1] * slopes[1:] < 0) & (np.minimum(np.abs(slopes[:-1]), np.abs(slopes[1:])) > 20 * slope_scale)
     if np.any(near_pairs & reversals):
         raise ProjectError('suspected_edge_spike', 'An isolated jump-and-return spike intersects the edge region; inspect original points before processing.', dataset.id)
-    kgrid = np.floor(np.sqrt((supported[-1] - e0) * ETOK) / .05) * .05
+    declared_ek0 = overrides.get('ek0')
+    ek0 = e0 if declared_ek0 is None else Parameters(ek0=declared_ek0).ek0
+    if not supported[0] < ek0 < supported[-1]:
+        raise ProjectError('ek0_coverage', 'E→k 原点必须位于处理保留的实测能区内。', dataset.id)
+    kgrid = np.floor(np.sqrt((supported[-1] - ek0) * ETOK) / .05) * .05
     dk = float(overrides.get('dk', 1.0))
     kmax = min(12.0, np.floor((kgrid - dk / 2 - .05) * 10) / 10)
     kmin = 2.0 if kmax > 3.1 else .5
     settings = {'e0': e0, 'pre1': pre1, 'pre2': pre2, 'norm1': norm1, 'norm2': norm2,
-                'nnorm': 2 if norm2 - norm1 >= 150 else 1, 'kmin': kmin, 'kmax': kmax,
-                'dk': dk, 'bkg_kmax': float(kgrid), 'rbkg': 1.0}
+                'nnorm': 2 if norm2 - norm1 >= 150 else 1}
+    if not normalization_only:
+        settings.update(kmin=kmin, kmax=kmax, dk=dk, bkg_kmax=float(kgrid), rbkg=1.0)
     settings.update(overrides)
     parameters = Parameters.model_validate(settings)
-    if parameters.kmax + parameters.dk / 2 > kgrid + 1e-10:
+    if not normalization_only and parameters.kmax + parameters.dk / 2 > kgrid + 1e-10:
         raise ProjectError('ft_coverage', 'Requested FT taper exceeds the measured/background-supported k range.', dataset.id)
     for lo, hi, count, code in [(parameters.pre1, parameters.pre2, 5, 'preedge_coverage'),
                                  (parameters.norm1, parameters.norm2, max(5, parameters.nnorm + 2), 'norm_coverage')]:
@@ -533,7 +538,7 @@ def propose_parameters(store, project, dataset, overrides=None, conditions=None,
         issues.append(_issue('fluorescence_correction_unverified', 'No dead-time or self-absorption correction was invented. Quantitative interpretation needs verified external correction provenance.', dataset.id))
     evidence = {'input_kind': 'mu', 'measured_energy_range_eV': [float(energy[0]), float(energy[-1])],
                 'background_energy_limit_eV': float(supported[-1]), 'excluded_points': int((~mask).sum()),
-                'k_coverage': float(kgrid), 'e0_role': 'chi extraction; distinct from reference calibration and fitted delta E0',
+                'k_coverage': None if normalization_only else float(kgrid), 'e0_role': 'normalization boundary; distinct from reference calibration and fitted delta E0',
                 'calibration_shift_eV': calibration.value if calibration else 0.0,
                 'edge_search_prior': edge_prior, 'next_edge_limit_eV': cutoff,
                 'sample_edge_alignment': False, 'data_smoothing': False,
@@ -557,12 +562,14 @@ def processing_fingerprint(dataset, parameters, calibration_id, calibration, mas
 def process_automatically(store, project, dataset, intent, context=None):
     if dataset.metadata.get('import_processing_state') in ('normalized', 'difference', 'background', 'chi_fit_table', 'r_space', 'q_space'):
         raise ProjectError('derived_input', '导入元数据已声明此谱为归一化/差谱/背景或其他衍生结果，不能作为原始 μ(E) 再做 AUTOBK。', dataset.id)
+    normalization_only = intent.task == 'xanes'
     parameters, mask, issues, evidence = propose_parameters(store, project, dataset,
-        intent.processing_overrides, intent.conditions, intent.calibration_ids.get(dataset.id))
+        intent.processing_overrides, intent.conditions, intent.calibration_ids.get(dataset.id), normalization_only=normalization_only)
     calibration_id = intent.calibration_ids.get(dataset.id)
     calibration = next((c for c in project.calibrations if c.id == calibration_id), None)
     fingerprint = processing_fingerprint(dataset, parameters, calibration_id, calibration, mask)
     fingerprint = hashlib.sha256(canonical({'base': fingerprint,
+        'normalization_only': normalization_only,
         'check_background_stability': intent.conditions.get('check_background_stability', True)})).hexdigest()
     # Cache only identical, fully specified automatic processing from this same
     # source revision. Updated conditions and noise can never silently reuse it.
@@ -581,7 +588,8 @@ def process_automatically(store, project, dataset, intent, context=None):
     noise = NoiseSpec(source='unknown', assumptions=['No independent repeated-scan noise estimate supplied; no high-R region presumed signal-free.'])
     if context:
         context.heartbeat('automatic preprocessing: ' + dataset.id, .15)
-    selected = process_dataset(frozen, project.id, dataset.id, parameters, mask, calibration_id, noise)
+    selected = process_dataset(frozen, project.id, dataset.id, parameters, mask, calibration_id, noise,
+                               normalization_only=normalization_only)
     selected.metadata.update(automation_fingerprint=fingerprint, auto_recipe='hard-xas-descriptive-v1',
                              auto_evidence=evidence, background_selection='first coverage-valid baseline; no final-fit score')
     if dataset.kind == 'mu' and evidence.get('edge_search_prior', {}).get('library_version'):
@@ -592,7 +600,7 @@ def process_automatically(store, project, dataset, intent, context=None):
             'energy_shifts_eV': dataset.metadata['reference_energy_shifts_eV'],
             'applied_once_before_merge': True, 'sample_edge_alignment': False}})
     trials, alternatives = [], []
-    if dataset.kind == 'mu' and intent.conditions.get('check_background_stability', True):
+    if dataset.kind == 'mu' and not normalization_only and intent.conditions.get('check_background_stability', True):
         for delta in (-.1, .1):
             settings = parameters.model_dump(mode='json')
             settings['rbkg'] = round(parameters.rbkg + delta, 6)

@@ -12,7 +12,7 @@ from ..import_formats import column_labels, describe
 from ..ingest import parse_ascii
 from .auto_contracts import SUPPORTED_OPERATIONS, effective_operations, normalize_intent, validate_calibration_scope
 from .auto_processing import _raw, inspect_input, resolve_input_mapping
-from .contracts import ModelRevision, NoiseSpec
+from .contracts import ModelRevision
 from .projects import ProjectError, canonical
 
 POLICY_VERSION = 'auto-preflight-v1'
@@ -128,6 +128,15 @@ def _questions(store, project, intent, inspected, *, explicit_scope=True):
         if (not d.element or not d.edge) and task != 'plot':
             add('edge_identity_missing', '元素或吸收边未声明；仅可进行描述性处理，不能将自动边位当作已核实身份。', did, identity_fields(d), blocking=False)
 
+    if 'preedge' in operations:
+        bounds=intent.preedge_windows or {}
+        names=('left_eV','peak_eV','right_eV')
+        if (set(bounds)!=set(names) or any(len(bounds[name])!=2 for name in names)
+            or not all(a<b for a,b in zip([v for name in names for v in bounds[name]][:-1],
+                                          [v for name in names for v in bounds[name]][1:]))):
+            add('preedge_windows','请填写互不重叠的左背景、预边峰和右背景窗口（eV）。')
+    if 'decomposition' in operations and len(intent.dataset_ids) < 3:
+        add('decomposition_samples', 'PCA / MCR 至少需要三条同一吸收边的样品谱。')
     if 'lcf' in operations and not intent.reference_ids:
         add('reference_required', '已选择参考组分拟合；请导入并指定至少一条适用参考谱。', fields=[
             _field('intent.reference_ids', '组分参考谱', [], 'multiselect', [d.id for d in project.datasets if d.id not in intent.dataset_ids])])
@@ -177,12 +186,21 @@ def _questions(store, project, intent, inspected, *, explicit_scope=True):
                 if len({(datasets[did].element, datasets[did].edge) for did in intent.dataset_ids}) != 1:
                     add('joint_cross_edge', '当前自动联合配方不支持跨吸收边共享。')
             previous = {p.id: p for p in project.processing}
+            from .larch_adapter import validate_fit_input
             for binding in model.bindings:
                 pp = previous.get(binding.processing_revision_id)
-                noise = intent.fit.get('noise') or (binding.noise.model_dump(mode='json') if binding.noise.source != 'unknown' else pp.noise.model_dump(mode='json') if pp else {'source': 'unknown'})
+                dataset = datasets.get(binding.dataset_id)
+                if pp is None or dataset is None:
+                    add('processing_required', '模型关联的处理版本或数据缺失。', binding.dataset_id)
+                    if binding.noise.source == 'unknown' and not intent.fit.get('noise'):
+                        add('noise_unspecified', '处理版本缺失，且该模型未单独声明噪声。', binding.dataset_id)
+                    continue
+                if intent.processing_overrides or intent.calibration_ids.get(dataset.id, pp.calibration_id) != pp.calibration_id:
+                    add('model_processing_override', '拟合复用模型绑定的处理版本。请在专业工作台保存新处理版本和模型。', dataset.id)
                 try:
-                    if NoiseSpec.model_validate(noise).source == 'unknown':
-                        add('noise_unspecified', '定量拟合需要明确实验噪声或带有假设的估计；请在专业工作台补充。', binding.dataset_id)
+                    validate_fit_input(store, project.id, dataset, pp, binding, intent.fit.get('noise'))
+                except ProjectError as exc:
+                    add(exc.code, str(exc), binding.dataset_id)
                 except ValueError:
                     add('noise_contract', '噪声声明不符合 NoiseSpec 合同，请在专业工作台修正。', binding.dataset_id)
             try:
@@ -333,7 +351,7 @@ def preflight(store, project, value):
         actions.append({'task': task, 'state': state, 'reason': blockers[0]['message'] if blockers else '输入声明可进入此流程；数值覆盖和科学诊断将在运行中继续检查。'})
     effective = intent.model_dump(mode='json')
     selected_operations = effective_operations(intent)
-    operation_labels = {'lcf': '参考组分拟合（LCF）', 'structural_fit': '结构拟合（EXAFS）'}
+    operation_labels = {'lcf': '参考组分拟合（LCF）', 'structural_fit': '结构拟合（EXAFS）', 'decomposition':'PCA / MCR','preedge':'预边积分'}
     capabilities = []
     for operation, label in operation_labels.items():
         available = operation in SUPPORTED_OPERATIONS[intent.task]
@@ -342,6 +360,10 @@ def preflight(store, project, value):
             reason = '当前模式不支持此功能。'
         elif intent.task == 'exafs':
             reason = 'EXAFS 模式必需结构拟合；请提供适用模型与噪声声明。'
+        elif operation == 'preedge':
+            reason='按已确认的背景和积分窗口计算面积。'
+        elif operation == 'decomposition':
+            reason='需至少三条同一吸收边、共同能区的实测谱。'
         elif operation == 'lcf':
             reason = '需指定适用参考谱并确认测量条件。' if selected_operation else '选择后将检查参考谱与适用依据。'
         else:

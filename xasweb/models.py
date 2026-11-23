@@ -17,6 +17,8 @@ class Mapping(CheckedModel):
 
 class Parameters(CheckedModel):
     e0: float | None = Field(default=None, gt=0, lt=200000)
+    # Default values are omitted to preserve hashes of existing fit snapshots.
+    ek0: float | None = Field(default=None, gt=0, lt=200000, exclude_if=lambda value: value is None)
     energy_shift: float = Field(default=0, ge=-1000, le=1000)
     pre1: float = Field(default=-150, ge=-10000, lt=0)
     pre2: float = Field(default=-30, ge=-10000, lt=0)
@@ -26,6 +28,10 @@ class Parameters(CheckedModel):
     rbkg: float = Field(default=1, ge=0.3, le=2.5)
     bkg_kweight: int = Field(default=1, ge=0, le=3)
     bkg_kmax: float | None = Field(default=None, gt=0, le=100)
+    bkg_nclamp: int = Field(default=2, ge=0, le=32, exclude_if=lambda value: value == 2)
+    bkg_clamp_lo: float = Field(default=1, ge=0, le=100, exclude_if=lambda value: value == 1)
+    bkg_clamp_hi: float = Field(default=1, ge=0, le=100, exclude_if=lambda value: value == 1)
+    bkg_uncertainty: bool = Field(default=False, exclude_if=lambda value: not value)
     kmin: float = Field(default=2, ge=0, le=30)
     kmax: float = Field(default=12, gt=0, le=30)
     kweight: int = Field(default=2, ge=0, le=3)

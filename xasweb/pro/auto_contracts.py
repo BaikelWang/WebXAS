@@ -12,10 +12,10 @@ from pydantic import Field, JsonValue, model_validator
 
 from .contracts import Contract, EntityId
 
-AnalysisOperation = Literal['lcf', 'structural_fit']
+AnalysisOperation = Literal['lcf', 'structural_fit', 'decomposition','preedge']
 SUPPORTED_OPERATIONS = {
-    'process': (), 'xanes': ('lcf',), 'exafs': ('structural_fit',),
-    'series': ('lcf', 'structural_fit'), 'plot': (),
+    'process': (), 'xanes': ('lcf','decomposition','preedge'), 'exafs': ('structural_fit',),
+    'series': ('lcf', 'structural_fit', 'decomposition','preedge'), 'plot': (),
 }
 
 
@@ -29,6 +29,9 @@ class AnalysisIntent(Contract):
     conditions: dict[str, JsonValue] = Field(default_factory=dict)
     processing_overrides: dict[str, JsonValue] = Field(default_factory=dict)
     calibration_ids: dict[EntityId, EntityId] = Field(default_factory=dict)
+    decomposition_window_eV: list[float] | None = Field(default=None,min_length=2,max_length=2,exclude_if=lambda v:v is None)
+    decomposition_components: int = Field(default=2,ge=1,le=8,exclude_if=lambda v:v==2)
+    preedge_windows: dict[str, list[float]] | None = Field(default=None, exclude_if=lambda v:v is None)
     lcf: dict[str, JsonValue] = Field(default_factory=dict)
     fit: dict[str, JsonValue] = Field(default_factory=dict)
     series: dict[str, JsonValue] = Field(default_factory=dict)
@@ -75,15 +78,20 @@ def normalize_intent(value):
     task = data.get('task', 'process')
     requested = data.get('requested_operations')
     if requested is not None:
-        if not isinstance(requested, list) or any(op not in ('lcf', 'structural_fit') for op in requested) or len(set(requested)) != len(requested):
+        if not isinstance(requested, list) or any(op not in ('lcf', 'structural_fit', 'decomposition','preedge') for op in requested) or len(set(requested)) != len(requested):
             return AnalysisIntent.model_validate(data)
         if task in SUPPORTED_OPERATIONS and set(requested) - set(SUPPORTED_OPERATIONS[task]):
             from .projects import ProjectError
             raise ProjectError('operation_task', '当前分析模式不支持所选功能，请重新选择模式与功能。')
         # EXAFS is an explicit structural-fit mode, never a disguised plotting
         # mode when its checkbox is omitted. The effective plan shows it fixed.
-        requested = ['structural_fit'] if task == 'exafs' else [op for op in ('lcf', 'structural_fit') if op in requested]
+        requested = ['structural_fit'] if task == 'exafs' else [op for op in ('lcf', 'structural_fit', 'decomposition','preedge') if op in requested]
         data['requested_operations'] = requested
+    if requested is None or 'decomposition' not in requested:
+        data.pop('decomposition_window_eV',None)
+        data.pop('decomposition_components',None)
+    if requested is None or 'preedge' not in requested:
+        data.pop('preedge_windows',None)
     lcf_enabled = task in ('xanes', 'series') and (requested is None or 'lcf' in requested)
     fit_enabled = task in ('exafs', 'series') and (requested is None or 'structural_fit' in requested)
     conditions = data.get('conditions', {})
@@ -170,6 +178,8 @@ class WorkflowResult(Contract):
     issues: list[AnalysisIssue] = Field(default_factory=list)
     features: list[dict[str, JsonValue]] = Field(default_factory=list)
     lcf_results: list[dict[str, JsonValue]] = Field(default_factory=list)
+    preedge_results: list[dict[str, JsonValue]] = Field(default_factory=list, exclude_if=lambda value:not value)
+    decomposition: dict[str, JsonValue] | None = Field(default=None, exclude_if=lambda value: value is None)
     fit_run_ids: list[EntityId] = Field(default_factory=list)
     series: dict[str, JsonValue] = Field(default_factory=dict)
     steps: list[dict[str, JsonValue]] = Field(default_factory=list)

@@ -13,35 +13,42 @@ from .preprocessing import load_array, save_array
 from .projects import ProjectError
 
 
-def _spectrum(store, project_id, processing):
-    if not {'energy', 'norm'} <= processing.arrays.keys():
+def _spectrum(store, project_id, processing, quantity='norm'):
+    if quantity not in ('norm', 'flat') or not {'energy', quantity} <= processing.arrays.keys():
         raise ProjectError('xanes_unavailable', 'XANES requires measured energy and normalized mu(E); chi(k) cannot supply them.', processing.dataset_id)
     energy = load_array(store, project_id, processing.arrays['energy'])
-    norm = load_array(store, project_id, processing.arrays['norm'])
+    norm = load_array(store, project_id, processing.arrays[quantity])
     if energy.ndim != 1 or norm.shape != energy.shape or len(energy) < 8 or np.any(np.diff(energy) <= 0):
         raise ProjectError('xanes_grid', 'XANES requires matching, strictly increasing measured energy and normalized absorption.')
     return energy, norm
 
 
+def bounded_derivative_edge(energy, derivative, e0, dataset_id=None):
+    """Use only the near-edge interval supported by the recorded normalization."""
+    if e0 is None or not np.isfinite(e0):
+        raise ProjectError('feature_e0', 'Edge attribution requires a recorded normalization E0.', dataset_id)
+    lo, hi = float(e0) - 20, float(e0) + 30
+    use = np.flatnonzero((energy >= lo) & (energy <= hi))
+    if (len(use) < 8 or not energy[0] <= e0 <= energy[-1] or
+            energy[use[0]] > lo + 5 or energy[use[-1]] < hi - 5 or
+            np.max(np.diff(energy[use]), initial=0) > 5 or not np.isfinite(derivative[use]).all()):
+        raise ProjectError('feature_sampling', 'Near-edge attribution requires continuous measured support over E0 [-20,+30] eV.', dataset_id)
+    idx = int(use[np.argmax(derivative[use])])
+    return {'edge_position_eV': float(energy[idx]), 'edge_window_eV': [lo,hi],
+            'edge_at_window_boundary': bool(idx in (use[0],use[-1])),
+            'edge_definition': 'maximum first derivative of normalized mu on recorded E0 [-20,+30] eV window'}
+
+
 def extract_features(store, project_id, processing):
     energy, norm = _spectrum(store, project_id, processing)
     e0 = processing.parameters.e0 or processing.metadata.get('metrics', {}).get('e0_eV')
-    if e0 is None:
-        raise ProjectError('feature_e0', 'XANES feature extraction requires a recorded normalization E0.', processing.dataset_id)
-    use = (energy >= e0 - 20) & (energy <= e0 + 30)
-    if use.sum() < 8 or np.max(np.diff(energy[use]), initial=0) > 5:
-        raise ProjectError('feature_sampling', 'Near-edge features require at least eight points with gaps no larger than 5 eV.', processing.dataset_id)
-    # This derivative does not replace raw or fitted data and includes its
-    # exact estimator and boundary convention in the portable record.
     derivative = np.gradient(norm, energy, edge_order=2)
-    indices = np.flatnonzero(use)
-    edge_index = int(indices[np.argmax(derivative[use])])
+    edge = bounded_derivative_edge(energy, derivative, e0, processing.dataset_id)
     white = (energy >= e0) & (energy <= e0 + 40)
     widx = np.flatnonzero(white)
     white_index = int(widx[np.argmax(norm[white])])
     return {'dataset_id': processing.dataset_id, 'processing_id': processing.id,
-        'edge_position_eV': float(energy[edge_index]),
-        'edge_definition': 'maximum first derivative of normalized mu on recorded E0 [-20,+30] eV window',
+        **edge,
         'white_line_energy_eV': float(energy[white_index]), 'white_line_height': float(norm[white_index]),
         'white_line_definition': 'maximum normalized mu in recorded E0 [0,+40] eV window; not a peak-model decomposition',
         'white_line_at_window_boundary': white_index in (int(widx[0]), int(widx[-1])),
@@ -104,8 +111,11 @@ def fit_reference_combination(store, project, sample, references, options=None, 
     sum_to_one = options.get('sum_to_one', True)
     if not isinstance(sum_to_one, bool):
         raise ProjectError('lcf_constraints', 'sum_to_one must be a boolean.', target.id)
-    e, y = _spectrum(store, project.id, sample)
-    ref_arrays = [_spectrum(store, project.id, p) for p in references]
+    quantity = options.get('normalization_ordinate', 'norm')
+    if quantity not in ('norm', 'flat'):
+        raise ProjectError('lcf_ordinate', 'Select recorded normalized absorption (norm) or flattened normalized absorption (flat).')
+    e, y = _spectrum(store, project.id, sample, quantity)
+    ref_arrays = [_spectrum(store, project.id, p, quantity) for p in references]
     e0 = sample.parameters.e0 or sample.metadata.get('metrics', {}).get('e0_eV')
     if e0 is None:
         raise ProjectError('lcf_e0', 'LCF requires a recorded near-edge reference E0.', target.id)
@@ -163,13 +173,64 @@ def fit_reference_combination(store, project, sample, references, options=None, 
         'processing_ids': [sample.id, *[p.id for p in references]], 'coefficients': coeff.tolist(),
         'coefficient_label': 'conditional reference-component coefficient',
         'constraints': {'nonnegative': True, 'sum_to_one': sum_to_one, 'energy_shifts': False},
-        'window_eV': [lo, hi], 'applicability_note': conditions['reference_applicability_note'],
+        'window_eV': [lo, hi], 'normalization_ordinate': quantity, 'applicability_note': conditions['reference_applicability_note'],
         'engine': {'solver': 'scipy.optimize.SLSQP' if sum_to_one else 'scipy.optimize.nnls',
                    'objective': 'unweighted least squares on measured sample grid; linear reference interpolation, no extrapolation',
-                   'validation_level': 'engineering and synthetic-mixture regression; real standard acceptance pending'},
+                   'validation_level': 'bounded solver and measured reference-mixture regressions; physical mass-fraction acceptance is case- and preparation-specific'},
         'diagnostics': {'rms': float(np.sqrt(np.mean(residual ** 2))), 'matrix_rank': rank,
                         'condition_number': condition, 'near_collinear': collinear,
                         'coefficient_at_boundary': boundaries, 'window_coefficient_max_abs_change': spread,
                         'uncertainty': 'not_estimated_under_constraints', 'reference_completeness': 'assumed_not_proven'},
         'alternatives': alternatives, 'warnings': warnings,
         'arrays': {name: save_array(store, project.id, value).model_dump(mode='json') for name, value in arrays.items()}}
+
+def preedge_integral(store, project_id, processing, *, left_eV, peak_eV, right_eV,
+                     degree=1, quantity='norm', positive_only=False):
+    """Integrate a measured pre-edge feature relative to an explicit flank polynomial."""
+    energy, mu = _spectrum(store, project_id, processing, quantity)
+    try:
+        intervals = np.asarray([left_eV, peak_eV, right_eV], dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ProjectError('preedge_windows', 'Each flank and peak interval must have two finite energies.') from exc
+    if (intervals.shape != (3,2) or not np.isfinite(intervals).all() or
+            np.any(intervals[:,1] <= intervals[:,0]) or np.min(intervals)<energy[0] or np.max(intervals)>energy[-1] or
+            not intervals[0,0] < intervals[1,0] < intervals[2,0] or
+            not intervals[0,1] < intervals[1,1] <= intervals[2,1] or intervals[0,1] >= intervals[2,0]):
+        raise ProjectError('preedge_windows', 'Supply three ordered, measured intervals for left flank, feature and right flank.')
+    if degree not in (0,1,2) or not isinstance(positive_only,bool):
+        raise ProjectError('preedge_model', 'Select a degree 0–2 flank polynomial and an explicit positive-only policy.')
+    masks=[(energy>=lo)&(energy<=hi) for lo,hi in intervals]
+    if any(m.sum()<3 for m in masks):
+        raise ProjectError('preedge_sampling','Each pre-edge interval requires at least three measured samples.')
+    center=intervals[1].mean()
+    design=np.polynomial.polynomial.polyvander(energy-center,degree)
+    flanks=masks[0]|masks[2];region=masks[1]
+    X=design[flanks]; y=mu[flanks]
+    coeff,_,rank,_=np.linalg.lstsq(X,y,rcond=None)
+    if rank!=degree+1 or len(y)<=rank:
+        raise ProjectError('preedge_baseline','The flank samples do not determine the requested baseline.')
+    baseline=design@coeff; resid=mu-baseline; e=energy[region]; feature=resid[region]
+    span=np.diff(e)
+    if span.max()>5*np.median(span):
+        raise ProjectError('preedge_gap','The peak interval crosses an internal measurement gap.')
+    observed=np.maximum(feature,0) if positive_only else feature
+    weights=np.r_[span[0],span[:-1]+span[1:],span[-1]]/2
+    area=float(weights@observed)
+    magnitude=float(weights@abs(observed))
+    centroid=float((weights*observed)@e/area) if area>1e-9*max(1,magnitude) else None
+    if centroid is not None and not e[0]<=centroid<=e[-1]:
+        centroid=None
+    variance=float(np.dot(y-X@coeff,y-X@coeff)/(len(y)-rank))
+    covariance=variance*np.linalg.inv(X.T@X)
+    jac=(weights*(feature>0 if positive_only else 1))@design[region]
+    baseline_se=float(np.sqrt(max(0,jac@covariance@jac)))
+    display=(energy>=intervals[0,0])&(energy<=intervals[2,1])
+    return {'dataset_id':processing.dataset_id,'processing_id':processing.id,'quantity':quantity,
+            'left_eV':intervals[0].tolist(),'peak_eV':intervals[1].tolist(),'right_eV':intervals[2].tolist(),
+            'sampled_peak_bounds_eV':[float(e[0]),float(e[-1])],'degree':degree,'positive_only':positive_only,
+            'energy_eV':energy[display].tolist(),'observed':mu[display].tolist(),'baseline':baseline[display].tolist(),
+            'residual':resid[display].tolist(),'peak_energy_eV':e.tolist(),'integrand':observed.tolist(),
+            'baseline_center_eV':float(center),'baseline_coefficients':coeff.tolist(),'baseline_covariance':covariance.tolist(),
+            'area_eV':area,'centroid_eV':centroid,'baseline_only_area_se_eV':baseline_se,
+            'uncertainty_scope':'Linearized uncertainty from the fitted flank polynomial alone, assuming ordinary least squares residuals. Excludes peak measurement noise, baseline model choice, energy calibration and normalization.',
+            'interpretation':'Integration on the measured grid relative to the selected background. Multiplet identity and absolute oxidation state require independent evidence.'}

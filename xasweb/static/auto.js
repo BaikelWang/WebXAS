@@ -40,7 +40,19 @@ function intent(){const task=$('task').value,c={},i={task,dataset_ids:[...S.sele
  if(task==='series'){c.state_key=$('state-key').value;i.series={relation:$('series-relation').value};}
  if(['process','xanes'].includes(task)){i.series={merge_repeats:$('merge-repeats').checked};if(i.series.merge_repeats){c.independent_repeats_confirmed=$('independent-repeats').checked;c.independent_repeats_note=$('repeats-note').value;}}
  if(task!=='plot'&&$('calibration-reference').value)c.reference_calibration={reference_dataset_id:$('calibration-reference').value,target_energy_eV:Number($('calibration-energy').value),standard_confirmed:$('calibration-confirmed').checked,note:$('calibration-note').value,apply_to_dataset_ids:[...document.querySelectorAll('[data-cal-target]:checked')].map(x=>x.dataset.calTarget)};
- const result=merge(i,structuredClone(S.overrides));if(result.calibration_ids){const selected=new Set([...S.selected,...S.references]);result.calibration_ids=Object.fromEntries(Object.entries(result.calibration_ids).filter(([id])=>selected.has(id)));}return result;
+ const result=merge(i,structuredClone(S.overrides));
+ if(i.requested_operations.includes('decomposition')){
+   const bounds=$('decomp-window').value.trim();
+   if(bounds){const vals=bounds.split(/[\s,，]+/).map(Number);if(vals.length!==2||!vals.every(Number.isFinite)||vals[0]>=vals[1])throw Error('共同能区需填写两个递增的能量值。');result.decomposition_window_eV=vals;}
+   result.decomposition_components=Number($('decomp-count').value);
+ }
+ if(i.requested_operations.includes('preedge')){
+   const bounds={};for(const [key,id] of Object.entries({left_eV:'pe-left',peak_eV:'pe-peak',right_eV:'pe-right'})){
+     const text=$(id).value.trim();const v=text?text.split(/[\s,，]+/).map(Number):[];bounds[key]=v.every(Number.isFinite)?v:[];
+   } result.preedge_windows=bounds;
+ }
+ if(i.requested_operations.includes('lcf')) result.lcf={...result.lcf,normalization_ordinate:$('lcf-ordinate').value};
+if(result.calibration_ids){const selected=new Set([...S.selected,...S.references]);result.calibration_ids=Object.fromEntries(Object.entries(result.calibration_ids).filter(([id])=>selected.has(id)));}return result;
 }
 async function preflight(){if(!S.project||!S.selected.size){S.plan=null;$('questions').innerHTML='<p class="hint">请选择至少一条样品谱。</p>';$('analyze').disabled=true;return null;}const token=++S.checkToken;const rev=S.project.revision;const pid=S.project.id;$('analyze').disabled=true;$('plan-summary').textContent='正在检查数据与适用条件…';const plan=await api(auto('/preflight'),json({expected_revision:rev,intent:intent()}));if(token!==S.checkToken||pid!==S.project.id||rev!==S.project.revision)return null;S.plan=plan;renderFeatures();busy(S.busy);
  const facts=plan.facts||[];$('fact-summary').innerHTML=[...S.selected].map(id=>{const d=S.project.datasets.find(d=>d.id===id);const mapping=facts.find(f=>f.dataset_id===id&&f.key==='mapping');return `<div class="fact-row">${esc(d.filename)}<br><span class="hint">${esc(d.element||'元素未声明')} ${esc(d.edge||'')} · ${d.kind==='chi'?'χ(k)': 'μ(E)'} · ${esc(mapping?.unit||d.mapping.energy_unit)}${mapping?' · 列定义已检查':''}</span></div>`;}).join('');
@@ -57,10 +69,48 @@ function renderMetadata(){const d=S.project?.datasets.find(d=>d.id===$('edit-dat
 async function saveMetadata(){const d=structuredClone(S.project.datasets.find(d=>d.id===$('edit-dataset').value));d.element=$('element').value.trim()||null;d.edge=$('edge').value||null;d.kind=$('kind').value;d.sample_id=$('sample-identity').value.trim()||null;const mapping={energy:Number($('energy-column').value)-1,signal:Number($('signal-column').value)-1,reference:Number($('reference-column').value)-1,mode:$('mode').value,energy_unit:$('unit').value};if(Object.entries(mapping).some(([k,v])=>d.mapping[k]!==v)&&!$('mapping-confirmed').checked)throw Error('修改列定义后，请根据文件或测量记录确认。');d.mapping=mapping;d.metadata.mapping_confirmed=$('mapping-confirmed').checked;d.metadata.input_kweight=Number($('input-weight').value);d.metadata.input_kweight_confirmed=$('weight-confirmed').checked;d.metadata.external_processing_note=$('external-note').value;invalidate();setProject(await api(pro('/datasets/'+d.id),{...json({expected_revision:S.project.revision,dataset:d}),method:'PATCH'}));closeDialog('metadata-dialog');await preflight();}
 function renderStateTable(){if(!S.project)return;const key=$('state-key').value;$('state-table').innerHTML=`<table><thead><tr><th>样品</th><th>${esc($('state-key').selectedOptions[0].textContent)}</th></tr></thead><tbody>${S.project.datasets.filter(d=>S.selected.has(d.id)).map(d=>`<tr><td>${esc(d.filename)}</td><td><input type="number" step="any" data-state="${esc(d.id)}" aria-label="${esc(d.filename)}的状态" value="${esc(d.conditions[key]??'')}"></td></tr>`).join('')}</tbody></table>`;busy(S.busy);}
 async function saveStates(){const key=$('state-key').value;const updates=[...document.querySelectorAll('[data-state]')].map(el=>({id:el.dataset.state,value:el.value}));invalidate();for(const x of updates){const d=structuredClone(S.project.datasets.find(d=>d.id===x.id));if(x.value==='')delete d.conditions[key];else{const n=Number(x.value);if(!Number.isFinite(n))throw Error('状态必须是有限数值');d.conditions[key]=n;}setProject(await api(pro('/datasets/'+d.id),{...json({expected_revision:S.project.revision,dataset:d}),method:'PATCH'}));}status('状态已保存。');await preflight();}
-function style(){return{layout:$('layout').value,dpi:Number($('dpi').value),language:'en',font_size:$('font-size').value?Number($('font-size').value):null,linewidth:Number($('line-width').value),palette:$('palette').value,legend:$('show-legend').checked};}
-function applyStyle(s){const ids={layout:'layout',dpi:'dpi',language:'language',font_size:'font-size',linewidth:'line-width',palette:'palette'};for(const[k,id]of Object.entries(ids))if(k in s)$(id).value=s[k]??'';$('language').value='en';if('legend'in s)$('show-legend').checked=s.legend;const v=style();const standard=v.font_size===null&&v.linewidth===1.1&&v.palette==='okabe_ito'&&v.legend;$('preset').value=standard&&v.layout==='double'&&v.dpi===600&&v.language==='en'?'paper':standard&&v.layout==='presentation'&&v.dpi===300&&v.language==='en'?'presentation':'custom';$('style-details').open=$('preset').value==='custom';exportSummary();}
-function exportSummary(){const s=style();$('export-summary').textContent=`${{single:'单栏 85 mm',double:'双栏 180 mm',presentation:'16:9 汇报'}[s.layout]} · ${s.dpi} dpi · Times New Roman`;}
-function preset(){const p=$('preset').value;if(p==='paper')applyStyle({layout:'double',dpi:600,language:'en',font_size:null,linewidth:1.1,palette:'okabe_ito',legend:true});if(p==='presentation')applyStyle({layout:'presentation',dpi:300,language:'en',font_size:null,linewidth:1.1,palette:'okabe_ito',legend:true});$('style-details').open=p==='custom';}
+let exportProfile='nature';
+function style(){return {profile:exportProfile,layout:$('layout').value,dpi:Number($('dpi').value),language:'en',font_size:$('font-size').value?Number($('font-size').value):null,linewidth:Number($('line-width').value),palette:$('palette').value,legend:$('show-legend').checked};}
+function applyStyle(s){
+  exportProfile=s.profile||'classic';
+  for(const [key,id] of Object.entries({layout:'layout',dpi:'dpi',font_size:'font-size',linewidth:'line-width',palette:'palette'}))if(key in s)$(id).value=s[key]??'';
+  if('legend' in s)$('show-legend').checked=s.legend;
+  $('font-size').min=exportProfile==='nature'?5:8;
+  $('font-size').max=exportProfile==='nature'?7:24;
+  $('line-width').max=exportProfile==='nature'?1:4;
+  const v=style();
+  $('preset').value=v.layout==='presentation'?'presentation':exportProfile==='nature'?'paper':'classic';
+  $('style-details').open=false;
+  exportSummary();
+}
+function exportSummary(){const v=style(); const width=v.layout==='presentation'?'16:9':(v.layout==='single'?(exportProfile==='nature'?89:85):(exportProfile==='nature'?183:180))+' mm'; $('export-summary').textContent=width+' · '+v.dpi+' dpi · '+(exportProfile==='nature'?'Nature':'Times New Roman');}
+function renderDifferenceControls(){
+ const controls=$('difference-controls'), workflow=S.workflow;
+ const ids=new Set(workflow?.processing_ids||[]);
+ const spectra=S.project.processing.filter(p=>ids.has(p.id)&&p.arrays.energy&&p.arrays.norm);
+ controls.hidden=spectra.length<2;
+ if(controls.dataset.workflow===workflow?.id)return;
+ controls.dataset.workflow=workflow?.id||'';
+ const previous=S.delivery?.workflow_id===workflow?.id?S.delivery.difference_pair:null;
+ const options=spectra.map(p=>{
+  const d=S.project.datasets.find(d=>d.id===p.dataset_id);
+  const title=d?.metadata?.display_name||d?.filename||p.dataset_id;
+  const suffix=spectra.filter(other=>S.project.datasets.find(d=>d.id===other.dataset_id)?.filename===d?.filename).length>1?` · ${p.id.slice(-6)}`:'';
+  return `<option value="${esc(p.id)}">${esc(title+suffix)}</option>`;
+ }).join('');
+ for(const [index,id] of ['difference-sample','difference-reference'].entries()){
+  $(id).innerHTML='<option value="">不生成</option>'+options;
+  $(id).value=previous?.[index]||'';
+ }
+}
+function differencePair(){
+ if($('difference-controls').hidden||$('difference-controls').dataset.workflow!==S.workflow?.id||!selectedFamilies().includes('F02'))return null;
+ const sample=$('difference-sample').value,reference=$('difference-reference').value;
+ if(!sample&&!reference)return null;
+ if(!sample||!reference||sample===reference)throw Error('请选择两条不同的归一化谱生成差谱。');
+ return [sample,reference];
+}
+function preset(){const p=$('preset').value;if(p==='custom'){$('style-details').open=true;return;}applyStyle({profile:p==='paper'?'nature':'classic',layout:p==='presentation'?'presentation':'double',dpi:p==='presentation'?300:600,font_size:null,linewidth:p==='paper'?.75:1.1,palette:'okabe_ito',legend:true});}
 function previewURL(f){return auto(`/deliveries/${encodeURIComponent(S.delivery.id)}/preview?filename=${encodeURIComponent(f.filename)}`);}
 function shortTitle(f){const known={F01:'输入与背景检查',F02:'归一化谱',F03:'一阶导数',F04:'k 空间',F05:'R 空间',F06:'小波变换',F07:'拟合与残差',F08:'路径与结构',F09:'参考组分',F10:'状态趋势',F11:'参数相关性',F12:'处理概览'};return known[f.family]||Object.entries(known).find(([k])=>f.filename.includes(k))?.[1]||f.title||f.filename;}
 function table(rows){return `<table><tbody>${rows.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`;}
@@ -73,7 +123,7 @@ function renderOutput(){const w=S.workflow;const show=!!w;$('output-panel').hidd
 function tab(name){for(const n of ['figures','data','methods']){$('tab-'+n).setAttribute('aria-selected',String(n===name));$('pane-'+n).hidden=n!==name;}}
 function stageLabel(r){const s=r.heartbeat?.stage||'';if(s.startsWith('processing'))return '正在自动处理光谱 '+(s.match(/\d+\/\d+/)?.[0]||'');if(s.includes('scientific_figures'))return '正在生成图件与数据';if(s.includes('fit'))return '正在拟合与检查模型';if(s.includes('publishing'))return '正在保存结果';if(s.includes('reference')||s.includes('calibrat'))return '正在检查参考与校准';return({queued:'等待计算',running:'正在分析',cancelling:'正在取消',succeeded:'已完成'}[r.state]||'正在准备计算引擎');}
 async function waitJob(job){S.job=job;localStorage.setItem('webxas-auto-job',JSON.stringify({project:S.project.id,job}));$('progress-panel').hidden=false;$('cancel').disabled=false;try{while(true){const r=await api(pro('/jobs/'+job.job_id));$('stage').textContent=stageLabel(r);if(r.heartbeat?.progress!=null)$('progress').value=r.heartbeat.progress;else $('progress').removeAttribute('value');if(['succeeded','failed','cancelled','timed_out','interrupted'].includes(r.state)){if(r.state!=='succeeded')throw Error(r.error?.message||stateLabel(r.state));return await api(pro('/jobs/'+job.job_id+'/result'));}await new Promise(r=>setTimeout(r,500));}}finally{S.job=null;localStorage.removeItem('webxas-auto-job');$('progress-panel').hidden=true;}}
-async function createDelivery(){const wasDirty=S.dirty;if(!selectedFamilies().length)throw Error('请至少选择一种图件');if(!S.workflow)throw Error('请先完成一次分析');const wid=S.workflow.id;const chosen=style();const j=await api(auto('/deliveries'),json({expected_revision:S.project.revision,workflow_id:wid,style:chosen,presentation:'individual',figure_families:selectedFamilies()}));const d=await waitJob(j);setProject(await api(pro('')));S.workflow=S.project.metadata.automation_runs.find(w=>w.id===wid);S.delivery=d;await hydrateDelivery();S.dirty=wasDirty;renderOutput();localStorage.setItem('webxas-ui-style',JSON.stringify(chosen));$('export-status').textContent='图件已更新。';status('');$('output-change').hidden=true;}
+async function createDelivery(){const wasDirty=S.dirty;if(!selectedFamilies().length)throw Error('请至少选择一种图件');if(!S.workflow)throw Error('请先完成一次分析');const wid=S.workflow.id;const chosen=style();const j=await api(auto('/deliveries'),json({expected_revision:S.project.revision,workflow_id:wid,style:chosen,presentation:'individual',figure_families:selectedFamilies(),difference_pair:differencePair()}));const d=await waitJob(j);setProject(await api(pro('')));S.workflow=S.project.metadata.automation_runs.find(w=>w.id===wid);S.delivery=d;await hydrateDelivery();S.dirty=wasDirty;renderOutput();localStorage.setItem('webxas-ui-style-v2',JSON.stringify(chosen));$('export-status').textContent='图件已更新。';status('');$('output-change').hidden=true;}
 async function analyze(){if(!selectedFamilies().length)throw Error('请至少选择一种输出图件，再开始分析');const p=await preflight();if(!p)return;if(p.questions.some(q=>q.blocking))return;busy(true);status('正在自动分析…');const j=await api(auto('/workflows'),json({expected_revision:S.project.revision,intent:p.effective_intent,plan_fingerprint:p.plan_fingerprint}));const w=await waitJob(j);setProject(await api(pro('')));S.workflow=S.project.metadata.automation_runs.find(x=>x.id===w.id);S.delivery=null;S.dirty=false;renderOutput();if(w.processing_ids?.length||w.fit_run_ids?.length)await createDelivery();else{S.dirty=true;renderOutput();await preflight();status('部分条件尚未满足，请查看说明。');}$('results').scrollIntoView({behavior:'smooth',block:'start'});}
 async function downloadResponse(r,name){if(!r.ok){let e=await r.json();throw Error(e.message||e.detail||'下载失败');}const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 async function createProject(){S.overrides={};S.operations=[];S.familyChoices=null;S.workflow=null;S.delivery=null;S.dirty=true;S.selected.clear();S.references.clear();S.standards.clear();setProject(await api('/api/pro/projects',json({title:'XAS 研究工程'})));}
@@ -93,10 +143,10 @@ $('review-settings').onclick=()=>{renderPlan();openDialog('plan-dialog');};$('sh
 $('history').onchange=action(async()=>{S.workflow=S.project.metadata.automation_runs.find(w=>w.id===$('history').value);S.delivery=(S.project.metadata.automation_deliveries||[]).filter(d=>d.workflow_id===S.workflow?.id).at(-1)||null;S.dirty=false;if(S.delivery?.style)applyStyle(S.delivery.style);loadWorkflowControls(S.workflow);await hydrateDelivery();renderOutput();closeDialog('project-dialog');await preflight();});
 $('sample-filter').onchange=renderFigureCards;for(const n of ['figures','data','methods'])$('tab-'+n).onclick=()=>tab(n);
 $('toggle-data').onclick=()=>{const compact=document.body.classList.toggle('compact-data');$('toggle-data').textContent=compact?'展开数据栏':'收起数据栏';};
-$('export').onclick=()=>{exportSummary();$('export-status').textContent='';openDialog('export-dialog');};$('preset').onchange=preset;for(const id of ['layout','dpi','language','font-size','line-width','palette','show-legend'])$(id).onchange=()=>{$('preset').value='custom';exportSummary();};
-$('redraw').onclick=action(async()=>{busy(true);await createDelivery();});$('download').onclick=action(async()=>{busy(true);if(!S.delivery||S.delivery.presentation!=='individual'||JSON.stringify([...(S.delivery.figure_families||[])].sort())!==JSON.stringify([...selectedFamilies()].sort())||Object.entries(style()).some(([k,v])=>JSON.stringify(S.delivery.style?.[k])!==JSON.stringify(v)))await createDelivery();await downloadResponse(await fetch(auto('/deliveries/'+S.delivery.id+'/download')),'WebXAS-research-figures.zip');$('export-status').textContent='下载已开始。';});
+$('export').onclick=()=>{exportSummary();renderDifferenceControls();$('export-status').textContent='';openDialog('export-dialog');};$('preset').onchange=preset;for(const id of ['layout','dpi','language','font-size','line-width','palette','show-legend'])$(id).onchange=()=>{$('preset').value='custom';exportSummary();};
+$('redraw').onclick=action(async()=>{busy(true);await createDelivery();});$('download').onclick=action(async()=>{busy(true);if(!S.delivery||S.delivery.presentation!=='individual'||JSON.stringify(S.delivery.difference_pair||null)!==JSON.stringify(differencePair())||JSON.stringify([...(S.delivery.figure_families||[])].sort())!==JSON.stringify([...selectedFamilies()].sort())||Object.entries(style()).some(([k,v])=>JSON.stringify(S.delivery.style?.[k])!==JSON.stringify(v)))await createDelivery();await downloadResponse(await fetch(auto('/deliveries/'+S.delivery.id+'/download')),'WebXAS-research-figures.zip');$('export-status').textContent='下载已开始。';});
 $('regenerate').onclick=action(async()=>{if(!selectedFamilies().length)throw Error('请至少选择一种图件');await createDelivery();});
-preset();try{const s=JSON.parse(localStorage.getItem('webxas-ui-style')||'null');if(s)applyStyle(s);}catch{}renderTask();renderOutput();
+preset();try{const s=JSON.parse(localStorage.getItem('webxas-ui-style-v2')||'null');if(s)applyStyle(s);}catch{}renderTask();renderOutput();
 (async()=>{const pid=new URLSearchParams(location.search).get('project')||localStorage.getItem('webxas-auto-project');if(!pid)return;try{setProject(await api('/api/pro/projects/'+encodeURIComponent(pid)),true);await hydrateDelivery();renderOutput();if(S.delivery?.style)applyStyle(S.delivery.style);const saved=JSON.parse(localStorage.getItem('webxas-auto-job')||'null');if(saved?.project===pid){busy(true);const result=await waitJob(saved.job);setProject(await api(pro('')));if(saved.job.operation==='auto'){S.workflow=S.project.metadata.automation_runs.find(w=>w.id===result.id);await createDelivery();}else{S.workflow=S.project.metadata.automation_runs.find(w=>w.id===result.workflow_id);if(!S.workflow)throw Error('图件对应的分析历史不存在');S.delivery=result;$('history').value=S.workflow.id;renderOutput();}busy(false);}await preflight();}catch(e){$('error').textContent=e.message;$('error').hidden=false;busy(false);}})();
 
 async function previewInput(file){
@@ -107,3 +157,5 @@ async function previewInput(file){
 }
 
 async function hydrateDelivery(){if(!S.delivery)return;const pid=S.project.id,id=S.delivery.id;const snapshot=await api(auto('/deliveries/'+encodeURIComponent(id)+'/figures'));if(S.project.id===pid&&S.delivery?.id===id)S.delivery={...S.delivery,...snapshot};}
+
+for(const id of ['pe-left','pe-peak','pe-right','lcf-ordinate','decomp-window','decomp-count']) $(id).addEventListener('change',action(async()=>{invalidate();await preflight();}));

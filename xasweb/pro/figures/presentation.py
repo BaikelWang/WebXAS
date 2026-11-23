@@ -4,6 +4,27 @@ import re
 
 
 def brief_insight(insight, family, method=None):
+    if method and method.get('quantity')=='preedge_integral':
+        return {'summary':f'在 {method["peak_eV"][0]:g}–{method["peak_eV"][1]:g} eV 扣除背景后积分。',
+                'metrics':[{'label':'预边面积','value':method['area_eV'],'unit':'eV','uncertainty':method['baseline_only_area_se_eV'],'basis':'对扣背景的归一化吸收积分；标准误仅传播背景拟合协方差。'}],
+                'notices':['面积误差仅计入背景拟合。']}
+    if family=='F13':
+        settings=method or insight.get('method',{}).get('figure_method',{})
+        rank=settings.get('components')
+        lo,hi=settings.get('window_eV',[None,None])
+        quantity=settings.get('quantity','')
+        summary=f'{rank} 个统计组分，共同能区 {lo:g}–{hi:g} eV。' if lo is not None else '多谱分解结果。'
+        metrics=[]
+        notices=[]
+        if quantity=='Explained variance' and settings.get('retained_variance') is not None:
+            metrics.append({'label':'保留组分累计解释方差','value':round(100*settings['retained_variance'],4),'unit':'%','basis':'保留的主成分方差之和除以总方差。'})
+        elif quantity.endswith('residual') and 'residual_rms' in settings:
+            metrics.append({'label':'重构残差 RMS','value':settings['residual_rms'],'unit':'1','basis':'各测点的实测值减相应重构值，取均方根。'})
+        elif quantity.startswith('MCR'):
+            metrics.append({'label':'MCR 相对重构误差','value':settings.get('relative_error'),'unit':'1','basis':'共同能区中，残差矩阵 Frobenius 范数除以输入矩阵范数。'})
+        if quantity.startswith('MCR') and settings.get('stability',0)>0.05:
+            notices.append('多初值给出的系数有差异，组分归属需用标样核实。')
+        return {'summary':summary,'metrics':metrics,'notices':notices}
     rows = insight.get('metrics', [])
     settings = method or insight.get('method', {}).get('figure_method', {})
     notices = []
@@ -30,6 +51,9 @@ def brief_insight(insight, family, method=None):
         rejected = find('拒绝点数')
         if rejected and rejected['value']:
             notices.append(f'已排除 {number(rejected)} 个数据点。')
+    elif settings.get('quantity') == 'normalized_difference':
+        summary = '共同能区内的归一化样品谱减参考谱。'
+        keys = [selected('差谱最大绝对幅度', '最大绝对差值')]
     elif family in ('F02', 'F03'):
         keys = [selected('工作流已存边位', '吸收边位置'), selected('工作流已存白线高度', '白线强度')] if family == 'F02' else [selected('导数最大值对应能量', '导数峰位')]
         if len(insight.get('dataset_ids', [])) > 1:

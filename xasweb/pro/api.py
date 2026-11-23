@@ -43,6 +43,7 @@ class ProcessingRequest(Contract):
     mask: list[bool] | None = None
     calibration_id: str | None = None
     noise: dict | None = None
+    normalization_only: bool = False
 
 
 class ModelRequest(Contract):
@@ -231,11 +232,22 @@ def validate_model_in_project(project,model):
 
 @router.post('/projects/{project_id}/models/validate')
 def validate_model(project_id: str,request: ModelRequest):
+    from .larch_adapter import validate_fit_input
     project=store().read(project_id)
     if project.revision!=request.expected_revision:
         raise ProjectError('revision_conflict','项目版本已更新。')
     compiled=validate_model_in_project(project,request.model)
-    return {'valid':True,'fit_allowed':not any(x.get('severity')=='error' for x in compiled.diagnostics),'free_ids':compiled.free_ids,'dependency_order':compiled.dependency_order,'diagnostics':compiled.diagnostics}
+    diagnostics = list(compiled.diagnostics)
+    datasets = {d.id: d for d in project.datasets}
+    snapshots = {p.id: p for p in project.processing}
+    for binding in request.model.bindings:
+        try:
+            validate_fit_input(store(), project_id, datasets[binding.dataset_id], snapshots[binding.processing_revision_id], binding)
+        except ProjectError as exc:
+            diagnostics.append({'severity': 'error', 'code': exc.code, 'message': str(exc), 'dataset_id': binding.dataset_id})
+    if not compiled.free_ids:
+        diagnostics.append({'severity': 'error', 'code': 'no_free_parameters', 'message': '模型没有自由参数。'})
+    return {'valid':True,'fit_allowed':not any(x.get('severity')=='error' for x in diagnostics),'free_ids':compiled.free_ids,'dependency_order':compiled.dependency_order,'diagnostics':diagnostics}
 
 
 @router.post('/projects/{project_id}/models')
@@ -412,11 +424,9 @@ def save_calibration(project_id: str,request: CalibrationRequest):
 
 @router.post('/projects/demo')
 def create_demo():
-    from importlib.resources import files
-
-    source = files('xasweb').joinpath('data', 'pro-demo.zip')
-    if not source.is_file():
-        raise ProjectError('demo_unavailable', '演示工程尚未安装。')
+    from pathlib import Path
+    source=Path(__file__).resolve().parents[1]/'data/pro-demo.zip'
+    if not source.is_file():raise ProjectError('demo_unavailable','演示工程尚未安装。')
     return store().import_archive(source.read_bytes()).model_dump(mode='json')
 
 

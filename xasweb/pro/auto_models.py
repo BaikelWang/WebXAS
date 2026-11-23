@@ -89,6 +89,8 @@ def _rebind(project, original, processing, intent):
             noise = previous.noise.model_dump(mode='json')
         else:
             noise = pp.noise.model_dump(mode='json')
+        if noise.get('processing_revision_id') not in (None, pp.id):
+            raise ProjectError('noise_revision', '噪声声明与已审查的处理版本不一致。', b['dataset_id'])
         noise['processing_revision_id'] = pp.id
         b['noise'] = NoiseSpec.model_validate(noise).model_dump(mode='json')
         # Preserve the model's fit windows; the existing adapter rejects any
@@ -173,9 +175,7 @@ def eligible_fit_calibrations(spec):
     return kept, excluded
 
 
-def run_known_model(store, project, processing, intent, context=None):
-    if any(pp.metadata.get('external_plot_only') is True for pp in processing.values()):
-        raise ProjectError('external_plot_only', '外部直绘快照只用于描述展示，不能直接进入自动定量 EXAFS；请先建立明确处理/噪声和来源的分析版本。')
+def resolve_model(project, intent):
     recipe = None
     if intent.model_recipe_id:
         recipe = next((r for r in project.metadata.get('automation_model_recipes', []) if r.get('id') == intent.model_recipe_id), None)
@@ -191,10 +191,21 @@ def run_known_model(store, project, processing, intent, context=None):
         original = next((m for m in project.models if m.id == intent.model_id), None)
     if original is None:
         raise ProjectError('model_required', 'Supply an existing path model or a separately reviewed structure template; descriptive E/k/R/WT results remain available.')
+    return original, recipe
+
+
+def run_known_model(store, project, processing, intent, context=None):
+    if any(pp.metadata.get('external_plot_only') is True for pp in processing.values()):
+        raise ProjectError('external_plot_only', '外部直绘快照只用于描述展示，不能直接进入自动定量 EXAFS；请先建立明确处理/噪声和来源的分析版本。')
+    original, recipe = resolve_model(project, intent)
     recipe = recipe or model_recipe(project, original)
     selected = set(intent.dataset_ids)
     if {b.dataset_id for b in original.bindings} != selected:
         raise ProjectError('model_dataset_scope', 'The selected model must bind exactly the selected samples. Create a new explicit model for another observation set.', original.id)
+    for binding in original.bindings:
+        pp = processing.get(binding.dataset_id)
+        if pp is not None and pp.id != binding.processing_revision_id:
+            raise ProjectError('model_processing_override', '结构拟合需要模型绑定的处理版本。处理设置有变化时，请在专业工作台保存新模型。', binding.dataset_id)
     model = _rebind(project, original, processing, intent)
     compiled = compile_model(model, project.paths)
     if any(d['severity'] == 'error' for d in compiled.diagnostics):

@@ -2,6 +2,7 @@
 
 No specimen catalog, saved fit, or example identity is consulted.
 """
+from xasweb import _runtime
 from pathlib import Path
 import hashlib
 import json
@@ -105,8 +106,8 @@ TEMPLATES = [
     {'id':'ligand_metal','name':'配体与金属双壳','paths':'M–O + M–M / M–N + M–M'},
     {'id':'split_shell','name':'同类配位分裂双壳','paths':'M–配体短键 + M–配体长键'},
 ]
-LIBRARY = Path(__file__).resolve().parents[1]/'.runtime/path-library'
-FEFF_CACHE = Path(__file__).resolve().parents[1]/'.runtime/feff-screening-cache'
+LIBRARY = _runtime / 'path-library'
+FEFF_CACHE = _runtime / 'feff-screening-cache'
 
 
 def template_for(element, scatterer):

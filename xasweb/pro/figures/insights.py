@@ -55,9 +55,13 @@ def column_units(spec, arrays):
         elif key in ('r', 'R_A', 'x_A', 'y_A', 'z_A'): units[key] = 'Å'
         elif key == 'weighted_chi' or key.startswith('weighted_chi_'):
             units[key] = f'Å^(-{spec.method["kweight"]})' if 'kweight' in spec.method else 'not_declared'
+        elif spec.method.get('quantity')=='preedge_integral':
+            units[key]='eV' if key in ('energy_eV','peak_energy_eV') else '1'
+        elif spec.family == 'F13': units[key] = 'eV' if key=='energy_eV' else '1'
         elif key == 'derivative_per_eV': units[key] = 'eV⁻¹'
         elif key in ('chi','data_chi','model_chi','residual_chi','path_chi','normalized_mu','data','model','residual','occupancy','atom_index','index','correlation') or key.startswith(('normalized_mu_', 'contribution_')) or key.endswith(('_valid',)):
             units[key] = '1'
+        elif key in ('sample_norm','reference_norm','difference','coefficient','reference_index','weighted_residual'): units[key] = '1'
         elif key in ('mu','raw_mu','bkg','pre_edge','post_edge','rejected_mu'): units[key] = 'relative_absorbance'
         elif key.startswith('chir_'): units[key] = 'stored_FT_convention'
         elif key in ('state','state_values'):
@@ -65,6 +69,36 @@ def column_units(spec, arrays):
             units[key] = next((unit for suffix, unit in [('_K','K'),('_V','V'),('_s','s')] if state.endswith(suffix)), 'declared_state')
         units.setdefault(key, 'not_declared')
     return units
+
+
+def recorded_method(spec):
+    settings = spec.method
+    calls = {item.get('operation'): item.get('arguments', {}) for item in settings.get('resolved_calls', [])}
+    normalization = calls.get('pre_edge')
+    transform = calls.get('xftf') or settings.get('transform')
+    if settings.get('quantity') == 'normalized_difference':
+        lo, hi = settings['energy_range_eV']
+        return {'summary': f'在 {lo:.2f}–{hi:.2f} eV 的共同区间计算样品减参考。', 'references': []}
+    if spec.family == 'F09' and settings.get('window_eV'):
+        lo, hi = settings['window_eV']
+        return {'summary': f'参考组分拟合使用 {lo:g}–{hi:g} eV 和非负系数约束。',
+                'references': [{'label':'SIXPack 线性组合拟合', 'url':'https://www-ssrl.slac.stanford.edu/~swebb/spdocs/sixpack_documentation.htm'}]}
+    if spec.family == 'F06':
+        return {'summary': 'Cauchy 小波在共同 k 区间计算，可比图共用色标。',
+                'references': [{'label':'Larch 小波文档', 'url':'https://xraypy.github.io/xraylarch/xafs_wavelets.html'}]}
+    if transform and spec.family in ('F04', 'F05', 'F07'):
+        lo, hi, weight = (transform.get(k) for k in ('kmin', 'kmax', 'kweight'))
+        if all(isinstance(v, (int, float)) for v in (lo, hi, weight)):
+            label = '拟合使用' if spec.family == 'F07' else '傅里叶变换使用'
+            return {'summary': f'{label} {lo:g}–{hi:g} Å⁻¹ 和 k^{weight} 加权。',
+                    'references': [{'label':'Larch FEFF 路径拟合', 'url':'https://xraypy.github.io/xraylarch/xafs_feffit.html'}] if spec.family == 'F07' else
+                    [{'label':'Larch 傅里叶变换', 'url':'https://xraypy.github.io/xraylarch/xafs_fourier.html'}]}
+    if normalization and isinstance(normalization.get('e0'), (int, float)):
+        return {'summary': f'预边扣除与归一化使用 E₀ = {normalization["e0"]:g} eV。',
+                'references': [{'label':'Larch 预边扣除和归一化', 'url':'https://xraypy.github.io/xraylarch/xafs_preedge.html'}]}
+    if spec.family == 'F03' and (settings.get('edge_definition') or settings.get('derivative_method')):
+        return {'summary': '一阶导数基于已存归一化谱的能量网格。', 'references': []}
+    return None
 
 
 def figure_insight(project, workflow, item):
@@ -91,6 +125,8 @@ def figure_insight(project, workflow, item):
         prefix=label+' · ' if len(grids)>1 else ''
         basis=f'绑定数组 {key}；只统计有效状态坐标（若适用），不是独立重复次数'
         metric(prefix+'横轴采样点数',len(values),'1',basis)
+        if spec.method.get('quantity') == 'reference_coefficients':
+            continue
         if panel.get('state_tick_labels'):
             observations.append(f'{label}使用已记录状态标签；横轴整数仅为显示位置，有效状态观测 {len(values)} 条。')
             continue
@@ -105,12 +141,20 @@ def figure_insight(project, workflow, item):
         if 'rejected_rows' in spec.method:
             metric('已记录拒绝点数', spec.method['rejected_rows'], '1', '处理快照的原始行选择掩码')
         limitations.append('背景曲线是该处理快照的结果；图形平滑或背景贴合本身不证明实验或模型正确。')
+    elif spec.method.get('quantity') == 'normalized_difference':
+        observations.append('样品减参考谱，使用样品实测网格和共同能区。')
+        metric('差谱最大绝对幅度', np.max(np.abs(arrays['difference'])), '1', '样品减参考；所用两条曲线与差值一同保存')
     elif family in ('F02','F03'):
         observations.append('归一化谱形与导数保留绑定快照的能量坐标，不自动对齐样品化学位移。')
         if family == 'F03' and 'derivative_per_eV' in arrays:
-            peak = int(np.argmax(arrays['derivative_per_eV']))
-            metric('导数最大值对应能量', float(arrays['energy_eV'][peak]), 'eV', '本图未额外平滑的一阶导数最大值；描述性边位定义')
-            observations.append(f'本图一阶导数最大值对应能量为 {float(arrays["energy_eV"][peak]):.6g} eV。')
+            edge = spec.method.get('edge_position_eV')
+            if edge is None:
+                limitations.append('导数曲线保留。缺少可核查的归一化 E₀ 或连续边区，未确定边位。')
+            else:
+                metric('限定边区的导数边位', edge, 'eV', spec.method.get('edge_definition', '绑定处理快照的边位定义'))
+                observations.append(f'按绑定边区定义得到导数边位 {edge:.6g} eV。')
+                if spec.method.get('edge_at_window_boundary'):
+                    limitations.append('导数峰位于搜索窗边界，需复核边区与标定。')
         processing_ids={s.get('processing_revision_id') for s in spec.sources}
         features=[f for f in workflow.get('features',[]) if f.get('processing_id') in processing_ids]
         processors={p.id:p for p in project.processing}
@@ -180,9 +224,11 @@ def figure_insight(project, workflow, item):
             metric('有效半路径长', spec.method['effective_half_path_A'], 'Å', '已存 FEFF 路径参数；多重散射时不是单根键长')
         limitations.append('模型投影不等同于独立结构测量；投影重叠不说明原子重合，不补造未保存的几何。')
     elif family == 'F09':
-        observations.append('图中展示给定参考和约束下的参考组分拟合或其残差。')
+        observations.append('系数对应本次选择的参考谱与约束。')
         for index, coefficient in enumerate(spec.method.get('coefficients', [])):
-            metric(f'参考组分系数 {index+1}', coefficient, '1', '绑定 LCF 结果的条件式参考系数；参考身份、约束和适用条件见方法')
+            labels = spec.method.get('reference_labels', [])
+            name = labels[index] if index < len(labels) else f'参考谱 {index+1}'
+            metric(f'参考组分系数 {index+1} · {name}', coefficient, '1', '绑定 LCF 结果的条件式参考系数；参考身份、约束和适用条件见方法')
             observations.append(f'绑定 LCF 的参考组分 {index+1} 系数为 {float(coefficient):.6g}，仅适用于已记录参考和约束。')
         limitations.append('参考组分系数不自动等同于含量或价态；未估计的系数不确定度不补造误差条。')
     elif family == 'F10':
@@ -212,6 +258,9 @@ def figure_insight(project, workflow, item):
              for r in project.runs if r.id in run_ids and r.result]
     result = {'observations':observations,'metrics':metrics,'limitations':_unique(limitations),
             'method':method,'sources':spec.sources,'dataset_ids':ids,'sample_names':names}
+    basis = recorded_method(spec)
+    if basis:
+        result['method_basis'] = basis
     from .presentation import brief_insight
     result['display'] = brief_insight(result, family, spec.method)
     return result

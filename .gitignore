@@ -8,3 +8,6 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+benchmarks/inputs/
+.public-fixtures/
+test-results*.xml

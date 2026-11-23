@@ -1,0 +1,98 @@
+{
+  "figures": [
+    {
+      "id": "G01",
+      "title": "归一化 XANES 差谱",
+      "source_url": "https://zenodo.org/records/14959531",
+      "experiment": "Praetz 胶带批次 1，Fe K 边透射谱。70–30 减 30–70，两条已冻结处理版本在共同实测区间相减。",
+      "physical_evidence": "样品配方区分了两次实验测量；差谱振幅依赖归一化，不能单独换算质量分数或价态。",
+      "files": {
+        "png": "G01.png",
+        "csv": "G01.csv"
+      },
+      "attribution": "Sebastian Praetz, Christopher Schlesiger, Damian Alexander Motz, Lena Heinrich, Eva Maria Heppke, Stephen Klimke, Moritz Jahns",
+      "article": "https://doi.org/10.1371/journal.pone.0323678",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "G02",
+      "title": "Fe K 边预边与拟合背景",
+      "source_url": "https://zenodo.org/records/22554443",
+      "experiment": "化石鲨鱼牙齿铁锰氧化物研究的实测 Fe 荧光扫描 fe5；原始成员 SAMPLES.DAT/20230317_XRFtubulo_zoom_XANESFe_1_Scan1.dat。",
+      "physical_evidence": "使用三个经生产预检接受的分离窗口及归一化吸收。此窗下的有符号积分为负；不作正峰归属或价态换算。作者示例采用另一组窗口和正值截断。",
+      "files": {
+        "png": "G02.png",
+        "csv": "G02.csv"
+      },
+      "attribution": "Thales Chamarelli Felipe, Alexandre Henrique Ferraz, Douglas Galante, Simone Bernardini, Christian Millo",
+      "article": "https://doi.org/10.1038/s41598-026-75019-9",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "G03",
+      "title": "Fe 胶带混合物的双参考 LCF",
+      "source_url": "https://zenodo.org/records/14959531",
+      "experiment": "Praetz 批次 1 的 50–50 样品，采用同批赤铁矿与磁铁矿参考谱，在 7115–7200 eV 范围拟合。",
+      "physical_evidence": "探索性光谱系数。该样品配制的赤铁矿质量分数为 50.6%；本图系数与该数值不同，不能用于宣称配方回收合格。",
+      "files": {
+        "png": "G03.png",
+        "csv": "G03.csv"
+      },
+      "attribution": "Sebastian Praetz, Christopher Schlesiger, Damian Alexander Motz, Lena Heinrich, Eva Maria Heppke, Stephen Klimke, Moritz Jahns",
+      "article": "https://doi.org/10.1371/journal.pone.0323678",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "G04",
+      "title": "Cu 箔 EXAFS 的 R 空间变换",
+      "source_url": "https://www.xaslib.xrayabsorption.org/spectrum/91/",
+      "experiment": "NSLS Cu 箔 10 K 实测谱。导出 k² 加权复变换的幅值、实部和虚部。",
+      "physical_evidence": "R 表示未相移校正的表观径向坐标；模峰位置不能直接读成 Cu–Cu 键长。",
+      "files": {}
+    },
+    {
+      "id": "G05",
+      "title": "ZnSe 的 R 空间结构拟合",
+      "source_url": "https://raw.githubusercontent.com/xraypy/xraylarch/2026.3.1/examples/xafsdata/znse_zn_xafs.001",
+      "experiment": "ZnSe 锌 K 边公开实测谱、对应 FEFF 路径与已存拟合结果，图中实部和虚部同时展示数据与模型。",
+      "physical_evidence": "模型参数依赖给定散射路径、有效拟合窗口和振幅假设。相同引擎的复算一致不证明配位数或局部结构唯一。",
+      "files": {}
+    },
+    {
+      "id": "G06",
+      "title": "Cu 箔 EXAFS 的 Cauchy 小波图",
+      "source_url": "https://www.xaslib.xrayabsorption.org/spectrum/91/",
+      "experiment": "同一条 Cu 箔 10 K 实测谱，以该工作流声明的 Cauchy 小波和有效 k 网格生成模值矩阵。",
+      "physical_evidence": "同核离散计算验证矩阵；热区本身没有给出可独立验证的散射元素身份或真实键长。",
+      "files": {}
+    },
+    {
+      "id": "G07",
+      "title": "Fe K 边随配比变化的状态热图",
+      "source_url": "https://zenodo.org/records/14959531",
+      "experiment": "Praetz 三条实测 Fe 胶带谱按赤铁矿参考质量分数 31.8%、50.6%、70.5% 排列。",
+      "physical_evidence": "纵坐标是三种已知配方，不是连续动力学时间轴。中间颜色不能当作额外测量状态。",
+      "files": {
+        "png": "G07.png",
+        "csv": "G07.csv"
+      },
+      "attribution": "Sebastian Praetz, Christopher Schlesiger, Damian Alexander Motz, Lena Heinrich, Eva Maria Heppke, Stephen Klimke, Moritz Jahns",
+      "article": "https://doi.org/10.1371/journal.pone.0323678",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "G08",
+      "title": "Fe 实测谱的 PCA 与 MCR",
+      "source_url": "https://zenodo.org/records/14959531",
+      "experiment": "三种 Fe 混合物和两种实测参考谱在 7115–7200 eV 构成 5 × 340 矩阵，主图为两组分 MCR 谱形，伴图为同一分解的 PCA 得分。",
+      "physical_evidence": "MCR 组分存在排列、尺度与旋转的不确定性；结果仅作分解示例。PCA 得分为正负可翻转的统计坐标，不指认化学物种。",
+      "files": {
+        "png": "G08.png",
+        "csv": "G08.csv"
+      },
+      "attribution": "Sebastian Praetz, Christopher Schlesiger, Damian Alexander Motz, Lena Heinrich, Eva Maria Heppke, Stephen Klimke, Moritz Jahns",
+      "article": "https://doi.org/10.1371/journal.pone.0323678",
+      "license": "https://creativecommons.org/licenses/by/4.0/"
+    }
+  ]
+}

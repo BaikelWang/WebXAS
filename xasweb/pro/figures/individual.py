@@ -4,7 +4,7 @@ from __future__ import annotations
 from .sources import FigureData, MAX_FIGURES
 from ..projects import ProjectError
 
-FAMILIES = tuple(f'F{i:02d}' for i in range(1, 13))
+FAMILIES = tuple(f'F{i:02d}' for i in range(1, 14))
 
 
 def validate_presentation(presentation='legacy', figure_families=None):
@@ -13,7 +13,7 @@ def validate_presentation(presentation='legacy', figure_families=None):
     if figure_families is not None and (not isinstance(figure_families, list) or
             not figure_families or any(f not in FAMILIES for f in figure_families) or
             len(set(figure_families)) != len(figure_families)):
-        raise ProjectError('invalid_figure_families', '请选择不重复的 F01–F12 图件类别。')
+        raise ProjectError('invalid_figure_families', '请选择不重复的 F01–F13 图件类别。')
 
 
 def independent_panels(items):
@@ -26,6 +26,7 @@ def independent_panels(items):
             keys = {panel[k] for k in ('x', 'y', 'z', 'state_valid') if panel.get(k)}
             for key in ('ys', 'xkeys', 'valid_masks', 'error_keys', 'error_valid_masks'):
                 keys.update(k for k in panel.get(key, []) if k)
+            keys.update(panel.get('data_keys', ()))
             if item.spec.kind == 'geometry':
                 keys.update(k for k in ('atom_index', 'occupancy') if k in item.arrays)
             arrays = {key: value for key, value in item.arrays.items() if key in keys}

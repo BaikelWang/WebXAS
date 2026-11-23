@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+from xasweb import _runtime
 from pathlib import Path, PurePosixPath
 import re
 import threading
@@ -26,6 +27,9 @@ class ProjectError(ValueError):
         super().__init__(message)
         self.code, self.message, self.object_id = code, message, object_id
         self.details=details or {}
+
+    def __reduce__(self):
+        return type(self), (self.code, self.message, self.object_id, self.details)
 
 
 def canonical(value):
@@ -83,7 +87,7 @@ def atomic_write(path, payload):
 
 class ProjectStore:
     def __init__(self, root=None):
-        self.root = Path(root or os.environ.get('XASWEB_PROJECT_ROOT', Path(__file__).resolve().parents[2] / '.runtime/projects')).resolve()
+        self.root = Path(root or os.environ.get('XASWEB_PROJECT_ROOT', _runtime / 'projects')).resolve()
         # Portable projects can be nested under long Windows workspace paths.
         if os.name == 'nt' and not str(self.root).startswith('\\\\?\\'):
             name = str(self.root)

@@ -8,6 +8,7 @@ import numpy as np
 
 from ..contracts import ArrayRef
 from ..preprocessing import load_array
+from ..xanes import bounded_derivative_edge
 from ..projects import ProjectError, canonical
 from .spec import FigureSpec, FigureStyle
 
@@ -68,7 +69,7 @@ def _wavelet(k, chi, lo, hi):
         'source': 'https://xraypy.github.io/xraylarch/xafs_wavelets.html'}
 
 
-def collect_figures(store, project, workflow, style=None):
+def collect_figures(store, project, workflow, style=None, difference_pair=None):
     """No fitting, preprocessing, writes, or mutation of source records."""
     style = style if isinstance(style, FigureStyle) else FigureStyle.model_validate(style or {})
     output = []
@@ -175,9 +176,13 @@ def collect_figures(store, project, workflow, style=None):
             else:
                 energy = a['energy']
                 derivative = np.gradient(a['norm'], energy, edge_order=2)
-                method = {'derivative_method': 'numpy.gradient, nonuniform grid, edge_order=2; no smoothing',
-                          'edge_definition': 'maximum first derivative of normalized mu',
-                          'edge_position_eV': float(energy[np.argmax(derivative)])}
+                method = {'derivative_method': 'numpy.gradient, nonuniform grid, edge_order=2; no smoothing'}
+                e0 = processing.parameters.e0 or processing.metadata.get('metrics', {}).get('e0_eV')
+                try:
+                    method.update(bounded_derivative_edge(energy, derivative, e0, dataset.id))
+                except ProjectError as exc:
+                    method['edge_position_eV'] = None
+                    method['edge_unavailable_reason'] = str(exc)
             _pair(energy, derivative, 'derivative')
             add('F03', index, f'{label} · 一阶导数', f'{label} · First derivative',
                 {'energy_eV': energy, 'derivative_per_eV': derivative},
@@ -236,6 +241,33 @@ def collect_figures(store, project, workflow, style=None):
         add('F02',900,'归一化近边谱比较','Normalized XANES comparison',values,[panel],sources,
             method={'grid':'original individual measured grids; no interpolation or sample-edge alignment'},
             notes=['保留每条谱的实际能量坐标，未将真实边移自动对齐。'])
+    if difference_pair is not None:
+        spectra = {p.id: (p, a) for p, a in normalized}
+        if (len(difference_pair) != 2 or difference_pair[0] == difference_pair[1] or
+                any(pid not in spectra for pid in difference_pair)):
+            raise ProjectError('difference_pair', '请选择同一次运行中的两个不同归一化谱。')
+        (left, la), (right, ra) = [spectra[pid] for pid in difference_pair]
+        ld, rd = by_dataset[left.dataset_id], by_dataset[right.dataset_id]
+        if not ld.element or not ld.edge or (ld.element, ld.edge) != (rd.element, rd.edge):
+            raise ProjectError('difference_edge', '差谱要求两条谱明确具有相同吸收元素与边。')
+        _pair(la['energy'], la['norm'], left.id)
+        _pair(ra['energy'], ra['norm'], right.id)
+        keep = (la['energy'] >= ra['energy'][0]) & (la['energy'] <= ra['energy'][-1])
+        if np.count_nonzero(keep) < 2:
+            raise ProjectError('difference_coverage', '所选近边谱的共同实测能区不足。')
+        grid = la['energy'][keep]
+        sample, reference = la['norm'][keep], np.interp(grid, ra['energy'], ra['norm'])
+        refs = [{'dataset_id': p.dataset_id, 'processing_revision_id': p.id,
+                 'arrays': {key: p.arrays[key].model_dump(mode='json') for key in ('energy', 'norm')}}
+                for p in (left, right)]
+        add('F02', 901, '归一化近边差谱', 'Normalized XANES difference',
+            {'energy_eV': grid, 'sample_norm': sample, 'reference_norm': reference, 'difference': sample - reference},
+            [{**_panel('energy_eV', ['difference'], 'E (eV)', 'Δ normalized μ(E) (1)', ['Sample − reference']),
+              'data_keys': ['sample_norm', 'reference_norm']}], refs,
+            method={'quantity': 'normalized_difference', 'difference_pair': list(difference_pair),
+                    'definition': 'sample minus reference on sample grid; linear interpolation, no extrapolation',
+                    'energy_range_eV': [float(grid[0]), float(grid[-1])]},
+            notes=['只在共有能区相减。实验能量校准和归一化条件影响可比性。'])
     if len(eligible)>1:
         weights={p.parameters.kweight for p,a in eligible}
         if len(weights)==1:
@@ -287,6 +319,7 @@ def collect_figures(store, project, workflow, style=None):
             a = _arrays(store, project.id, result.arrays)
             label = _label(snapshots[result.dataset_id], result_index)
             idx = 100 * run_index + result_index
+            transform = binding[result.dataset_id].transform
             source = {'dataset_id': result.dataset_id, 'processing_revision_id': result.processing_revision_id,
                       'data_kind': 'synthetic' if snapshots[result.dataset_id].metadata.get('synthetic') is True else 'experimental' if snapshots[result.dataset_id].metadata.get('synthetic') is False else snapshots[result.dataset_id].metadata.get('data_kind','not_declared'),
                       'run_id': rid, 'snapshot_sha256': run.snapshot_sha256,
@@ -298,7 +331,8 @@ def collect_figures(store, project, workflow, style=None):
                 add('F07', idx, f'{label} · 拟合与残差', f'{label} · Fit and residual', values,
                     [_panel('k', ['data_chi', 'model_chi'], 'k (Å⁻¹)', 'χ(k)', ['Data', 'Model']),
                      _panel('k', ['residual_chi'], 'k (Å⁻¹)', 'Residual χ(k)', ['Data − model'])], [source], kind='residual',
-                    method={'weight': 0, 'space': 'k', 'converged': run.result.converged, 'assessment': run.result.assessment,
+                    method={'weight': 0, 'space': 'k', 'transform': transform.model_dump(mode='json'),
+                            'converged': run.result.converged, 'assessment': run.result.assessment,
                             'statistics': run.result.statistics.model_dump(mode='json')})
             if {'r', 'data_re', 'data_im', 'model_re', 'model_im'} <= a.keys():
                 values = {n: a[n] for n in ('r', 'data_re', 'data_im', 'model_re', 'model_im')}
@@ -308,7 +342,15 @@ def collect_figures(store, project, workflow, style=None):
                 add('F07', 10000+idx, f'{label} · R 空间拟合', f'{label} · R-space fit', values,
                     [_panel('r', ['data_re','model_re','data_im','model_im'], 'R (Å; uncorrected)', 'χ(R)', ['Data Re','Model Re','Data Im','Model Im']),
                      _panel('r', ['residual_re','residual_im'], 'R (Å; uncorrected)', 'Residual χ(R)', ['Re residual','Im residual'])], [source], kind='residual',
-                    method={'phase_corrected': False, 'space': 'r', 'weight': binding[result.dataset_id].transform.kweight})
+                    method={'phase_corrected': False, 'space': 'r', 'weight': transform.kweight,
+                            'transform': transform.model_dump(mode='json')})
+            if 'weighted_residual' in a:
+                add('F07', 20000+idx, f'{label} · 拟合目标残差', f'{label} · Weighted objective residual',
+                    {'objective_index':np.arange(len(a['weighted_residual']),dtype=float), 'weighted_residual':a['weighted_residual']},
+                    [_panel('objective_index', ['weighted_residual'], 'Objective index (1)', 'Weighted residual (1)')], [source],
+                    method={'quantity': 'objective_residual', 'transform': transform.model_dump(mode='json'),
+                            'definition': 'exact signed residual vector of this dataset in the optimizer order'},
+                    notes=['带符号加权残差保留优化器顺序。横轴索引不是 R。'])
             for path_index, (path_id, refs) in enumerate(result.path_contributions.items()):
                 p = _arrays(store, project.id, refs)
                 if not {'k', 'chi'} <= p.keys():
@@ -374,6 +416,18 @@ def collect_figures(store, project, workflow, style=None):
             [{'dataset_id':dataset.id,'processing_revision_ids':lcf.get('processing_ids',[]),'lcf_arrays':lcf['arrays']}], kind='residual',
             method={k:v for k,v in lcf.items() if k!='arrays'},
             notes=['系数是给定参考与约束下的参考组分系数；不自动等同于含量或价态。'])
+        coefficients = lcf.get('coefficients') or []
+        reference_ids = lcf.get('reference_ids') or []
+        if coefficients and len(coefficients) == len(reference_ids):
+            panel = _panel('reference_index', ['coefficient'], 'Reference', 'Coefficient (1)', ['Coefficient'])
+            panel.update(state_tick_labels=[f'Ref. {i+1}' for i in range(len(coefficients))], series_modes=['markers'])
+            add('F09', 100 + index, f'{label} · 参考组分系数', f'{label} · Reference coefficients',
+                {'reference_index': np.arange(len(coefficients), dtype=float), 'coefficient': np.asarray(coefficients)},
+                [panel], [{'dataset_id': dataset.id, 'processing_revision_ids': lcf.get('processing_ids', [])}],
+                method={'quantity':'reference_coefficients', 'reference_labels':[
+                            _label(by_dataset[d], i) if d in by_dataset else f'Reference {i+1}' for i,d in enumerate(reference_ids)],
+                        **{k:v for k,v in lcf.items() if k!='arrays'}},
+                notes=['滑动分析窗口和移除参考谱是敏感性检查；其波动不是置信区间。'])
     series = workflow.get('series') or {}
     axis='energy' if 'energy' in series.get('arrays',{}) else 'k'
     if {axis, 'matrix', 'state_values'} <= series.get('arrays', {}).keys():
@@ -389,6 +443,9 @@ def collect_figures(store, project, workflow, style=None):
                 notes=['仅使用实际状态元数据；不补造失败状态或进行趋势平滑。'])
         else:
             missing.append({'family':'F10','reason':'状态值不足或并非严格递增；不建立会误导的热图。'})
+    from .decomposed import add_decomposition, add_preedge
+    add_preedge(store, project, workflow, add)
+    add_decomposition(store, project, workflow, add)
     from .trends import add_series_trends
     add_series_trends(project,workflow,add,missing)
     # A compact evidence sequence: near-edge shape, EXAFS oscillation,

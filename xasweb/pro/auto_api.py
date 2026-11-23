@@ -39,7 +39,8 @@ class DeliveryRequest(Contract):
     workflow_id: str = Field(min_length=1, max_length=100)
     style: dict = Field(default_factory=dict)
     presentation: Literal['legacy','individual'] = 'legacy'
-    figure_families: list[Literal['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10','F11','F12']] | None = Field(default=None,min_length=1,max_length=12)
+    figure_families: list[Literal['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10','F11','F12','F13']] | None = Field(default=None,min_length=1,max_length=13)
+    difference_pair: list[str] | None = Field(default=None, min_length=2, max_length=2)
     timeout_seconds: float = Field(default=600, gt=0, le=3600)
 
 
@@ -86,6 +87,7 @@ def start_delivery(project_id: str, request: DeliveryRequest):
         'project_id': project_id, 'expected_revision': project.revision,
         'workflow_id': request.workflow_id, 'style': request.style,
         'presentation':request.presentation,'figure_families':request.figure_families,
+        'difference_pair':list(request.difference_pair) if request.difference_pair else None,
     }, request.timeout_seconds)
 
 

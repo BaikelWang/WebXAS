@@ -4,7 +4,11 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt
 const uid=prefix=>prefix+'_'+crypto.randomUUID().replaceAll('-','');
 const state={project:null,datasetId:null,selected:new Set(),paths:new Set(),model:null,dirty:false,job:null,run:null,arrayCache:new Map()};
 const parameterFields=[['e0','E₀ / eV',''],['energy_shift','仪器能量偏移 / eV',0],['pre1','前沿下界 / eV',-150],['pre2','前沿上界 / eV',-30],['norm1','归一化下界 / eV',150],['norm2','归一化上界 / eV',700],['nnorm','归一化阶数',2],['rbkg','背景 R / Å',1],['bkg_kweight','背景 k 权重',1],['bkg_kmax','背景最大 k',''],['kmin','FT 最小 k / Å⁻¹',2],['kmax','FT 最大 k / Å⁻¹',12],['kweight','FT k 权重',2],['dk','FT 窗口渐变 dk',1]];
-$('processing-fields').innerHTML=parameterFields.map(([key,label,value])=>`<label>${label}<input id="pp-${key}" type="number" step="any" value="${value}"></label>`).join('');
+const backgroundFields=[['ek0','E→k 原点 / eV',''],['bkg_nclamp','端点约束点数',2],['bkg_clamp_lo','低 k 约束权重',1],['bkg_clamp_hi','高 k 约束权重',1]];
+for(const [id,fields] of [['processing-fields',parameterFields],['background-fields',backgroundFields]]){
+ $(id).innerHTML=fields.map(([key,label,value])=>`<label>${label}<input id="pp-${key}" type="number" step="any" value="${value}"></label>`).join('');
+}
+const processingFields=[...parameterFields,...backgroundFields];
 function status(message){$('status').textContent=message;}
 function fail(error){$('error').textContent=error.message||String(error);$('error').hidden=false;status('操作未完成，请检查上方说明。');}
 function clearError(){$('error').hidden=true;}
@@ -49,7 +53,7 @@ $('dataset-list').querySelectorAll('[data-dataset]').forEach(button=>button.oncl
 $('dataset-list').querySelectorAll('[data-joint]').forEach(box=>box.onchange=()=>{box.checked?state.selected.add(box.dataset.joint):state.selected.delete(box.dataset.joint);if(state.model)markDirty('数据选择已变，请重建或检查模型。');});
 const issues=state.project.migration_report||[];$('migration').innerHTML=issues.length?`<div class="notice"><strong>工程迁移说明</strong>${issues.map(x=>`<p>${esc(x.message||x)}</p>`).join('')}</div>`:'';}
 function renderMetadata(){const d=activeDataset();$('dataset-name').textContent=d?.filename||'未选择数据';$('raw-preview').textContent=d?.raw_text?.slice(0,10000)||'无原始文本';if(!d)return;
-$('data-kind').value=d.kind==='chi'?'chi':'mu';$('data-element').value=d.element||'';$('data-edge').value=d.edge||'K';$('sample-id').value=d.sample_id||'';for(const key of ['energy','signal','reference'])$('map-'+key).value=(d.mapping?.[key]??({energy:0,signal:1,reference:2}[key]))+1;$('map-mode').value=d.mapping?.mode||'mu';$('energy-unit').value=d.mapping?.energy_unit||'eV';$('input-kweight').value=d.metadata?.input_kweight??0;$('input-kweight-confirmed').checked=!!d.metadata?.input_kweight_confirmed;$('conditions').value=Object.keys(d.conditions||{}).length?JSON.stringify(d.conditions):'';$('path-element').value=d.element||'';$('path-edge').value=d.edge||'K';const p=latestProcessing(d.id);$('processing-calibration').value=p?.calibration_id||'';for(const [key,,value]of parameterFields)$('pp-'+key).value=p?.parameters?.[key]??value;$('processing-summary').textContent=p?`处理版本 ${p.id}`:'尚未处理';}
+$('data-kind').value=d.kind==='chi'?'chi':'mu';$('data-element').value=d.element||'';$('data-edge').value=d.edge||'K';$('sample-id').value=d.sample_id||'';for(const key of ['energy','signal','reference'])$('map-'+key).value=(d.mapping?.[key]??({energy:0,signal:1,reference:2}[key]))+1;$('map-mode').value=d.mapping?.mode||'mu';$('energy-unit').value=d.mapping?.energy_unit||'eV';$('input-kweight').value=d.metadata?.input_kweight??0;$('input-kweight-confirmed').checked=!!d.metadata?.input_kweight_confirmed;$('conditions').value=Object.keys(d.conditions||{}).length?JSON.stringify(d.conditions):'';$('path-element').value=d.element||'';$('path-edge').value=d.edge||'K';const p=latestProcessing(d.id);$('processing-calibration').value=p?.calibration_id||'';for(const [key,,value]of processingFields)$('pp-'+key).value=p?.parameters?.[key]??value;$('pp-bkg-uncertainty').checked=!!p?.parameters?.bkg_uncertainty;$('normalization-only').checked=!!p?.metadata?.normalization_only;$('processing-summary').textContent=p?`处理版本 ${p.id}`:'尚未处理';}
 function renderPaths(){const paths=state.project.paths;$('path-list').innerHTML=paths.length?`<table><thead><tr><th>使用</th><th>路径</th><th>元素与边</th><th>类型</th><th>有效半程长 / Å</th><th>简并度</th></tr></thead><tbody>${paths.map(p=>`<tr><td><input type="checkbox" data-path="${p.id}" ${state.paths.has(p.id)?'checked':''} aria-label="选择路径 ${esc(p.id)}"></td><td>${esc(p.id)}<small>${esc(p.absorber_site)}</small></td><td>${esc(p.absorber_element)} ${esc(p.edge)}</td><td>${p.nleg===2?'单散射':`多重散射 (${p.nleg} legs)`}</td><td>${p.reff.toFixed(4)}</td><td>${p.degen}</td></tr>`).join('')}</tbody></table>`:'<p class="empty">工程尚无 FEFF 路径</p>';$('path-list').querySelectorAll('[data-path]').forEach(box=>box.onchange=()=>{box.checked?state.paths.add(box.dataset.path):state.paths.delete(box.dataset.path);});}
 function renderHistory(){const previous=$('model-select').value;$('model-select').innerHTML='<option value="">选择模型</option>'+state.project.models.map(m=>option(m.id,m.title||m.id,previous)).join('');const selected=state.run?.id;$('run-select').innerHTML='<option value="">选择历史运行</option>'+state.project.runs.filter(r=>r.result).map(r=>option(r.id,`${r.id} · ${r.result.assessment}`,selected)).join('');}
 function markDirty(reason='模型草稿已修改，保存后运行。'){state.dirty=true;state.modelValidation=null;$('draft-state').textContent='未保存的模型草稿';$('result-context').textContent=reason+' 已有图表仍属于原运行。';available();}
@@ -102,7 +106,26 @@ $('open-file').onclick=()=>$('project-file').click();$('project-file').onchange=
 $('export-project').onclick=guarded(async()=>{await download(await fetch(url('/export?expected_revision='+state.project.revision),{method:'POST'}),'webxas-project.zip');status('工程已导出。');});
 $('upload-spectra').onclick=()=>$('spectra-file').click();$('spectra-file').onchange=guarded(async()=>{for(const file of $('spectra-file').files){const form=new FormData();form.append('file',file);setProject(await request(url('/datasets?expected_revision='+state.project.revision),{method:'POST',body:form}));}state.datasetId=state.project.datasets.at(-1)?.id;renderMetadata();renderDatasets();available();status('光谱已导入，请确认数据声明。');$('spectra-file').value='';});
 $('metadata-form').onsubmit=guarded(async()=>{const d=structuredClone(activeDataset());d.kind=$('data-kind').value;d.element=$('data-element').value.trim()||null;d.edge=$('data-edge').value;d.sample_id=$('sample-id').value.trim()||null;d.conditions=$('conditions').value.trim()?JSON.parse($('conditions').value):{};for(const key of ['energy','signal','reference'])d.mapping[key]=Number($('map-'+key).value)-1;d.mapping.mode=$('map-mode').value;d.mapping.energy_unit=$('energy-unit').value;if(d.kind==='chi'&&!$('input-kweight-confirmed').checked)throw new Error('请确认输入 χ(k) 的 k 权重后保存声明。');d.metadata={...d.metadata,input_kweight:Number($('input-kweight').value),input_kweight_confirmed:d.kind==='chi'&&$('input-kweight-confirmed').checked};setProject(await request(url('/datasets/'+d.id),json('PATCH',{expected_revision:state.project.revision,dataset:d})));if(state.model)markDirty('数据声明已改变，请重新处理并更新模型。');status('数据声明已保存。');});
-$('processing-form').onsubmit=guarded(async()=>{const parameters={};for(const [key]of parameterFields)parameters[key]=$('pp-'+key).value===''?null:Number($('pp-'+key).value);const noise=$('noise-source').value==='explicit_scalar'?{source:'explicit_scalar',value:Number($('noise-value').value),unit:'chi'}:{source:'engine_estimate',unit:'chi'};status('预处理任务已提交。');const job=await request(url('/processing'),json('POST',{expected_revision:state.project.revision,dataset_id:state.datasetId,parameters,noise,calibration_id:$('processing-calibration').value||null}));await runJob(job);await renderProcessing();if(state.model)markDirty('预处理已更新，请更新模型绑定后运行。');});
+$('processing-form').onsubmit=guarded(async()=>{
+ const parameters={};
+ for(const [key] of processingFields){
+  const input=$('pp-'+key).value;
+  parameters[key]=input===''?null:Number(input);
+ }
+ parameters.bkg_uncertainty=$('pp-bkg-uncertainty').checked;
+ const normalizationOnly=$('normalization-only').checked;
+ const noise=$('noise-source').value==='explicit_scalar'
+  ? {source:'explicit_scalar',value:Number($('noise-value').value),unit:'chi'}
+  : {source:'engine_estimate',unit:'chi',estimation_range:[15,30],assumptions:['white_noise_high_R']};
+ status('预处理任务已提交。');
+ const job=await request(url('/processing'),json('POST',{
+  expected_revision:state.project.revision,dataset_id:state.datasetId,parameters,noise,
+  normalization_only:normalizationOnly,calibration_id:$('processing-calibration').value||null
+ }));
+ await runJob(job);
+ await renderProcessing();
+ if(state.model)markDirty('预处理已更新，请更新模型绑定后运行。');
+});
 $('import-path').onclick=()=>$('path-file').click();$('path-file').onchange=guarded(async()=>{const form=new FormData();for(const file of $('path-file').files)form.append('files',file);const query=new URLSearchParams({expected_revision:state.project.revision,element:$('path-element').value.trim(),edge:$('path-edge').value,absorber_site:$('path-site').value.trim()});setProject(await request(url('/paths?'+query),{method:'POST',body:form}));status('路径已导入。');$('path-file').value='';});
 $('build-model').onclick=guarded(async()=>buildModel());
 $('add-parameter').onclick=guarded(async()=>{readModel();state.model.parameters.nodes.push({id:'p_'+state.model.parameters.nodes.length,label:'',unit:'1',scope:'global',owner_id:null,kind:'fixed',value:1,minimum:null,maximum:null,expression:null,physical_basis:''});renderModel();markDirty();});

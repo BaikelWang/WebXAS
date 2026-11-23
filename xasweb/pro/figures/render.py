@@ -68,6 +68,11 @@ def _draw(axis, item, panel, colorbar=True, fontsize=None):
             axis.tick_params(axis='x',pad=10)
     else:
         missing_drawn=False
+        fit_overlay = any(name.startswith('model') for name in panel['ys'])
+        if fit_overlay and spec.family == 'F07' and spec.method.get('transform'):
+            t = spec.method['transform']
+            space = spec.method['space']
+            axis.axvspan(t[f'{space}min'], t[f'{space}max'], color='#e4eaf0', zorder=0)
         for i, (name, label) in enumerate(zip(panel['ys'], panel['labels'])):
             values = a[name]
             # Display offset is applied only here; CSV always stores the actual
@@ -81,11 +86,13 @@ def _draw(axis, item, panel, colorbar=True, fontsize=None):
             displayed=np.where(valid,values+i*style.offset,np.nan)
             xvalues=np.where(state_valid,a[xkey],np.nan)
             mode=panel.get('series_modes',['line']*len(panel['ys']))[i]
+            observed_fit = fit_overlay and name in ('data', 'data_chi', 'data_re', 'data_im')
             axis.plot(xvalues, displayed,
                       label=text(label,'Sample',identity), color=color, lw=linewidth,
-                      ls='none' if mode=='points' else linestyle,
-                      marker='x' if mode=='points' else 'o' if mode=='trend' else None,
-                      markersize=4)
+                      ls='none' if mode in ('points','markers') else linestyle,
+                      marker='x' if mode=='points' else 'o' if mode in ('trend','markers') or observed_fit else None,
+                      markersize=3.2 if observed_fit else 4, markerfacecolor='white' if observed_fit else color,
+                      markevery=max(1, len(xvalues)//24) if observed_fit else None)
             if panel.get('error_keys'):
                 errors=a[panel['error_keys'][i]]
                 error_valid=a[panel['error_valid_masks'][i]]&valid&state_valid
@@ -100,7 +107,8 @@ def _draw(axis, item, panel, colorbar=True, fontsize=None):
                           label='No result')
         if style.legend and (len(panel['ys']) > 1 or missing_drawn):
             axis.legend(loc='best', fontsize=fontsize or style.point_size, handlelength=1.6)
-        if (spec.kind == 'residual' or (spec.method.get('source_panel_kind') == 'residual' and
+        if (spec.method.get('quantity') in ('objective_residual','normalized_difference') or
+                (spec.kind == 'residual' and not fit_overlay) or (spec.method.get('source_panel_kind') == 'residual' and
                 spec.method.get('source_panel_index', 0) > 0)) and len(panel['ys']) <= 2:
             axis.axhline(0, color='.65', linewidth=.5, zorder=0)
     axis.set_xlabel(text(panel.get('xlabel',''),'Axis'), fontsize=fontsize or style.point_size)
@@ -131,12 +139,12 @@ def make_figure(item):
     else:
         rows, cols = (2,1) if item.spec.kind == 'residual' else (1,1)
         if rows == 2 and style.layout == 'single': height = 96.
-    with matplotlib.rc_context(rc_params(style.point_size)):
+    with matplotlib.rc_context(rc_params(style.point_size, style.font_family)):
         fig, axes = plt.subplots(rows, cols, figsize=(width/25.4,height/25.4), squeeze=False,
                                  layout='constrained',
                                  gridspec_kw={'height_ratios':[3,1]} if item.spec.kind == 'residual' else None)
         # rc_context must also remain in effect during savefig (render_figure).
-        fig._webxas_fonts = [FONT_FAMILY]
+        fig._webxas_fonts = [style.font_family]
         fig._webxas_text = EnglishText()
         fig.get_layout_engine().set(w_pad=4/72,h_pad=4/72,wspace=.04,hspace=.05)
         if item.spec.kind == 'composite':
@@ -159,7 +167,7 @@ def make_figure(item):
                 axes[0,0].set_xlabel(''); axes[0,0].tick_params(labelbottom=False)
         fig.canvas.draw()
         try:
-            font_audit=audit_fonts(fig)
+            font_audit=audit_fonts(fig, style.font_family)
         except Exception:
             plt.close(fig)
             raise
@@ -170,8 +178,8 @@ def make_figure(item):
             rects.append({'id':str(i), 'bbox_pt':[box.x0*width/25.4*72,box.y0*height/25.4*72,
                                                   box.x1*width/25.4*72,box.y1*height/25.4*72]})
         geometry={'schema_version':1,'figure_id':item.spec.id,'width_mm':width,'height_mm':height,
-                  'axes':rects,'font_families':[FONT_FAMILY],'font_size_pt':style.point_size,
-                  'font_audit':font_audit,'render_policy':STYLE_POLICY,'render_language':'en',
+                  'axes':rects,'font_families':[style.font_family],'font_size_pt':style.point_size,
+                  'font_audit':font_audit,'render_policy':'nature-final-v1' if style.profile == 'nature' else STYLE_POLICY,'render_language':'en',
                   'figure_titles':False,'text_aliases':fig._webxas_text.aliases,
                   'dpi':style.dpi,'rasterized_heatmap':item.spec.kind=='heatmap' or any(c.spec.kind=='heatmap' for c in item.children or []),
                   'alignment_exemptions':['Residual panels intentionally have 3:1 height ratio.'] if item.spec.kind=='residual' else []}
@@ -185,14 +193,27 @@ def render_figure(item):
     entries = {}
     try:
         style=item.spec.style
-        with matplotlib.rc_context(rc_params(style.point_size)):
-            for extension in style.formats:
-                stream=io.BytesIO()
-                options={'dpi':style.dpi,'transparent':style.transparent}
-                if extension=='tiff': options['pil_kwargs']={'compression':'tiff_lzw'}
-                if extension in ('svg','png'): options['metadata']={'Description':item.spec.id}
-                fig.savefig(stream,format=extension,**options)
-                entries[f'figures/{item.spec.id}.{extension}']=stream.getvalue()
+        with matplotlib.rc_context(rc_params(style.point_size, style.font_family)):
+            # Lock geometry at the intended physical size before changing backends.
+            fig.set_layout_engine('none')
+            for extension in ('png', *[ext for ext in style.formats if ext != 'png']):
+                stream = io.BytesIO()
+                if extension == 'tiff':
+                    # PNG and TIFF use the same final Agg pixels, including
+                    # per-pixel alpha. Keep that raster until both encoders finish.
+                    raster.save(stream, format='TIFF', compression='tiff_lzw', dpi=(style.dpi, style.dpi))
+                else:
+                    options = {'dpi': style.dpi, 'transparent': style.transparent}
+                    if extension in ('svg', 'png'):
+                        options['metadata'] = {'Description': item.spec.id}
+                    if extension == 'png':
+                        options['pil_kwargs'] = {'compress_level': 1}
+                    fig.savefig(stream, format=extension, **options)
+                    if extension == 'png' and 'tiff' in style.formats:
+                        from PIL import Image
+                        pixels = fig.canvas.renderer.buffer_rgba()
+                        raster = Image.frombuffer('RGBA', (pixels.shape[1], pixels.shape[0]), pixels, 'raw', 'RGBA', 0, 1)
+                entries[f'figures/{item.spec.id}.{extension}'] = stream.getvalue()
         entries[f'specs/{item.spec.id}.geometry.json']=json.dumps(geometry,ensure_ascii=False).encode('utf-8')
         return entries, geometry
     finally:

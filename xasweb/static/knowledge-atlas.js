@@ -83,16 +83,17 @@
 
   function sourceCard(item, { text, entryLink }) {
     const isFigure = item.kind === 'figure';
+    const isExample = item.subtype === '论文图例';
     const article = text('article', null, 'atlas-card atlas-source-card');
     const link = entryLink(item, 'atlas-card-link', '');
-    if (item.subtype) {
+    if (item.subtype && !isExample) {
       const scope = isFigure ? `原文 ${item.subtype}` : item.subtype;
       link.append(text('p', scope, 'atlas-card-scope'));
     }
     const title = text('h3', item.title, 'atlas-card-title');
     title.id = `atlas-title-${item.id}`;
     link.append(title);
-    const summary = isFigure ? item.snippet : item.summary;
+    const summary = isFigure && !isExample ? item.snippet : item.summary;
     if (summary) link.append(text('p', summary, 'atlas-card-summary'));
     const credit = [item.authors, item.year].filter(Boolean).join(' · ');
     if (credit) link.append(text('p', credit, 'atlas-card-credit'));
@@ -111,12 +112,20 @@
         if (card) sections.push(section('atlas-reference-case', '实谱案例', [card], 'atlas-reference-card', text));
       }
       if (!featuredKind || featuredKind === 'figure') {
+        const index = text('a', '按八类科学问题查看论文原图与作图方法', 'source-action');
+        index.href = '/knowledge?' + new URLSearchParams({view: 'atlas', q: '论文图例'});
+        sections.push(index);
         const cards = teachingFigures.map(figure => previewCard(figure, options)).filter(Boolean);
         if (cards.length) sections.push(section('atlas-teaching-figures', '教学图谱', cards, 'atlas-figure-cards', text));
       }
     }
 
-    const figures = items.filter(item => item.kind === 'figure');
+    const examples = items.filter(item => item.subtype === '论文图例').sort((a, b) => a.id.localeCompare(b.id));
+    if (examples.length) {
+      sections.push(section('atlas-figure-examples', '八类论文图例', examples.map(item => sourceCard(item, options)),
+                            'atlas-figure-cards', text));
+    }
+    const figures = items.filter(item => item.kind === 'figure' && item.subtype !== '论文图例');
     const cases = items.filter(item => item.kind === 'case');
     if (figures.length) {
       const cards = figures.map(item => sourceCard(item, options));

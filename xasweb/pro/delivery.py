@@ -95,11 +95,12 @@ def read_delivery_file(payload, filename, *, max_bytes=MAX_DELIVERY_BYTES):
         raise ProjectError('delivery_file_integrity','交付文件大小或 SHA256 不符合清单，未提供该文件。') from exc
 
 
-def _individual_snapshot(store, project, workflow, style):
+def _individual_snapshot(store, project, workflow, style, difference_pair=None):
     """Reuse all frozen numerical panels, including initially unselected families."""
     fingerprint=hashlib.sha256(canonical(workflow)).hexdigest()
     for record in reversed(project.metadata.get('automation_deliveries',[])):
-        if record.get('workflow_id')!=workflow['id'] or record.get('presentation')!='individual':continue
+        if (record.get('workflow_id')!=workflow['id'] or record.get('presentation')!='individual' or
+                record.get('difference_pair') != difference_pair):continue
         payload=store.read_asset(project.id,AssetRef.model_validate(record['asset']))
         manifest=delivery_manifest(payload)
         if not manifest or manifest.get('workflow_sha256')!=fingerprint or 'snapshot_figures' not in manifest:continue
@@ -193,13 +194,14 @@ def _reopenable_project(store, project):
     value['metadata'].pop('automation_deliveries',None)
     entries={'project.json':canonical(value)}
     for ref in asset_refs(value):
-        entries.setdefault(ref['path'],store.read_asset(project.id,ref))
+        if ref['path'] not in entries:
+            entries[ref['path']]=store.read_asset(project.id,ref)
         if sum(map(len,entries.values()))>MAX_DELIVERY_BYTES:
             raise ProjectError('delivery_too_large','可重开工程已超过 250 MB；请拆分项目后导出。')
     manifest={'format':'webxas-project','schema_version':1,'files':{
         name:{'sha256':hashlib.sha256(blob).hexdigest(),'byte_size':len(blob)} for name,blob in entries.items()}}
     stream=io.BytesIO()
-    with ZipFile(stream,'w',ZIP_DEFLATED) as archive:
+    with ZipFile(stream,'w',ZIP_DEFLATED, compresslevel=1) as archive:
         for name,blob in entries.items(): archive.writestr(name,blob)
         archive.writestr('manifest.json',canonical(manifest))
     payload=stream.getvalue()
@@ -225,10 +227,13 @@ def _methods(project,workflow,figures,missing,style):
            json.dumps({key:workflow.get(key) for key in ('task','state','decisions','issues')},ensure_ascii=False,indent=2), '```','']
     for item in figures:
         spec=item.spec
+        basis=spec.insight.get('method_basis') or {}
         lines.extend([f'## {spec.id} · {spec.title}', '', spec.title_en, '',
                       '数据 / Source data: '+', '.join(spec.data_files),
                       '展示变换 / Display transforms: '+json.dumps(spec.transforms,ensure_ascii=False),
                       '实际设置 / Recorded method: '+json.dumps(spec.method,ensure_ascii=False,sort_keys=True),
+                      *([basis['summary']] if basis else []),
+                      *(f'- [{ref["label"]}]({ref["url"]})' for ref in basis.get('references', [])),
                       *spec.notes,''])
     lines.extend(['## 缺项 / Omitted figures',''])
     lines.extend(f'- {m["family"]}: {m["reason"]}' for m in missing)
@@ -253,10 +258,13 @@ def _readme(project, workflow, records, missing):
         metrics=''.join(f'<tr><th>{esc(m["label"])}</th><td>{esc(m["value"])} {esc(m["unit"])}</td><td>{esc(m["basis"])}</td></tr>'
                         for m in display['metrics'])
         limits=''.join(f'<li>{esc(text)}</li>' for text in display['notices'])
+        basis=insight.get('method_basis') or {}
+        references=' · '.join(f'<a href="{esc(ref["url"])}">{esc(ref["label"])}</a>' for ref in basis.get('references', [])
+                              if ref.get('url','').startswith('https://'))
         sections.append(f'<section><h2>{esc(fig["id"])} · {esc(fig["title"])}</h2>'
                         f'<img src="{esc(fig["filename"])}" alt="{esc(fig["title"])}">'
                         f'<p>{links}</p><p>{data}</p><ul>{observations}</ul><table>{metrics}</table>'
-                        f'<ul>{limits}</ul><details><summary>分析记录</summary>'
+                        f'<ul>{limits}</ul><details><summary>方法与来源</summary><p>{esc(basis.get("summary", ""))}</p><p>{references}</p>'
                         f'<pre>{esc(json.dumps(insight,ensure_ascii=False,indent=2))}</pre></details>'
                         f'<a href="{esc(fig["spec_file"])}">FigureSpec</a></section>')
     omitted=''.join(f'<li>{esc(m["family"])}: {esc(m["reason"])}</li>' for m in missing)
@@ -275,7 +283,40 @@ def _readme(project, workflow, records, missing):
             f'<h2>未生成图件与原因</h2><ul>{omitted}</ul></html>').encode('utf-8')
 
 
-def build_delivery(store, project_id, workflow_id, style=None, presentation='legacy', figure_families=None):
+def render_batch(items):
+    """Keep the render pool inside the disposable job's process group."""
+    from concurrent.futures import ProcessPoolExecutor
+    from contextlib import contextmanager
+    import multiprocessing
+    import os
+    import sys
+
+    @contextmanager
+    def pool_results():
+        allowed = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else 1
+        default = '4' if sys.platform.startswith('linux') else '1'
+        limit = int(os.environ.get('WEBXAS_RENDER_WORKERS', default))
+        workers = min(len(items), allowed, max(1, min(4, limit)))
+        if workers < 2:
+            yield map(render_figure, items)
+            return
+        method = 'spawn'
+        if sys.platform.startswith('linux') and os.environ.get('WEBXAS_DISPOSABLE_JOB') == '1':
+            # The worker may already own native scientific-library threads. A
+            # clean forkserver shares the read-only font and backend imports
+            # without forking a thread-owning application or a live job.
+            method = 'forkserver'
+            multiprocessing.set_forkserver_preload([
+                'matplotlib.pyplot', 'matplotlib.backends.backend_pdf',
+                'matplotlib.backends.backend_svg',
+            ])
+        with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context(method)) as pool:
+            yield pool.map(render_figure, items, chunksize=1)
+
+    return pool_results()
+
+
+def build_delivery(store, project_id, workflow_id, style=None, presentation='legacy', figure_families=None, difference_pair=None):
     """Return a complete ZIP without mutating projects or launching analysis."""
     project=store.read(project_id)
     workflow=_workflow(project,workflow_id)
@@ -296,11 +337,11 @@ def build_delivery(store, project_id, workflow_id, style=None, presentation='leg
             raise ProjectError('delivery_too_large','图件、数据与工程的展开总体积超过 250 MB；请拆分工作流或调整分辨率后重试。')
         entries[name]=payload
     put('project/project.webxas.zip',_reopenable_project(store,project))
-    cached=_individual_snapshot(store,project,workflow,style) if presentation=='individual' else None
+    cached=_individual_snapshot(store,project,workflow,style,difference_pair) if presentation=='individual' else None
     if cached is not None:
         items,missing=cached
     else:
-        items,missing=collect_figures(store,project,workflow,style)
+        items,missing=collect_figures(store,project,workflow,style,difference_pair)
         if presentation=='individual':
             items=independent_panels(items)
             missing=[m for m in missing if m['family']!='F12']
@@ -326,44 +367,50 @@ def build_delivery(store, project_id, workflow_id, style=None, presentation='leg
     if not items and presentation=='legacy':
         raise ProjectError('figures_unavailable','当前工作流没有可绘制的有效源数组。',workflow_id,{'missing':missing})
     records=[]
-    for item in items:
-        if item.spec.kind!='composite':
-            put(item.spec.data_files[0],_individual_csv(item,workflow_id) if presentation=='individual' else _figure_csv(item))
-            if item.spec.kind=='heatmap' or presentation=='individual':
-                buffer=io.BytesIO();np.savez_compressed(buffer,**item.arrays)
-                array_file=f'data/{item.spec.id}.npz'
-                put(array_file,buffer.getvalue())
-                if array_file not in item.spec.data_files:
-                    item.spec=item.spec.model_copy(update={'data_files':[*item.spec.data_files,array_file]})
-            if presentation=='individual':
-                metadata_name=f'data/{item.spec.id}.metadata.json'
-                put(metadata_name,canonical({'workflow_id':workflow_id,'panel_id':item.spec.panel_id,
-                    'dataset_ids':item.spec.dataset_ids,'sample_names':item.spec.sample_names,
-                    'column_units':column_units(item.spec,item.arrays),'sources':item.spec.sources,
-                    'method':item.spec.method,'display_transforms':item.spec.transforms}))
-                item.spec=item.spec.model_copy(update={'data_files':[*item.spec.data_files,metadata_name]})
-        put(f'specs/{item.spec.id}.json',canonical(item.spec.model_dump(mode='json')))
-        rendered,geometry=render_figure(item)
-        for name,blob in rendered.items(): put(name,blob)
-        records.append({'id':item.spec.id,'family':item.spec.family,
-                        'panel_id':item.spec.panel_id,'parent_figure_id':item.spec.parent_figure_id,
-                        'panel_index':item.spec.panel_index,'dataset_ids':item.spec.dataset_ids,
-                        'sample_names':item.spec.sample_names,'insight':item.spec.insight,
-                        'title':item.spec.title if style.language=='zh' else item.spec.title_en,
-                        'filename':f'figures/{item.spec.id}.png','spec_file':f'specs/{item.spec.id}.json',
-                        'data_files':item.spec.data_files,'sources':item.spec.sources,
-                        'formats':[n for n in rendered if n.startswith('figures/')],
-                        'width_mm':geometry['width_mm'],'height_mm':geometry['height_mm'],
-                        'rasterized_heatmap':geometry['rasterized_heatmap']})
-    put('project/workflow.json',canonical(workflow))
-    selected=set(workflow.get('processing_ids',[]))
-    put('project/processing-snapshots.json',canonical([p.model_dump(mode='json') for p in project.processing if p.id in selected]))
-    selected_runs=set(workflow.get('fit_run_ids',[]))
-    put('project/fit-runs.json',canonical([r.model_dump(mode='json') for r in project.runs if r.id in selected_runs]))
-    put('tables/decisions.json',canonical(workflow.get('decisions',[])))
-    put('tables/issues.json',canonical(workflow.get('issues',[])))
-    put('tables/features.json',canonical(workflow.get('features',[])))
-    put('tables/lcf.json',canonical(workflow.get('lcf_results',[])))
+    with render_batch(items) as results:
+        for item, (rendered,geometry) in zip(items, results, strict=True):
+            if item.spec.kind!='composite':
+                put(item.spec.data_files[0],_individual_csv(item,workflow_id) if presentation=='individual' else _figure_csv(item))
+                if item.spec.kind=='heatmap' or presentation=='individual':
+                    array_file=f'data/{item.spec.id}.npz'
+                    if presentation == 'individual':
+                        # These are the same full-precision arrays frozen just above.
+                        data = entries[f'snapshots/figures/{item.spec.id}.npz']
+                    else:
+                        buffer = io.BytesIO()
+                        np.savez_compressed(buffer, **item.arrays)
+                        data = buffer.getvalue()
+                    put(array_file, data)
+                    if array_file not in item.spec.data_files:
+                        item.spec=item.spec.model_copy(update={'data_files':[*item.spec.data_files,array_file]})
+                if presentation=='individual':
+                    metadata_name=f'data/{item.spec.id}.metadata.json'
+                    put(metadata_name,canonical({'workflow_id':workflow_id,'panel_id':item.spec.panel_id,
+                        'dataset_ids':item.spec.dataset_ids,'sample_names':item.spec.sample_names,
+                        'column_units':column_units(item.spec,item.arrays),'sources':item.spec.sources,
+                        'method':item.spec.method,'display_transforms':item.spec.transforms}))
+                    item.spec=item.spec.model_copy(update={'data_files':[*item.spec.data_files,metadata_name]})
+            put(f'specs/{item.spec.id}.json',canonical(item.spec.model_dump(mode='json')))
+            for name,blob in rendered.items(): put(name,blob)
+            records.append({'id':item.spec.id,'family':item.spec.family,
+                            'panel_id':item.spec.panel_id,'parent_figure_id':item.spec.parent_figure_id,
+                            'panel_index':item.spec.panel_index,'dataset_ids':item.spec.dataset_ids,
+                            'sample_names':item.spec.sample_names,'insight':item.spec.insight,
+                            'title':item.spec.title if style.language=='zh' else item.spec.title_en,
+                            'filename':f'figures/{item.spec.id}.png','spec_file':f'specs/{item.spec.id}.json',
+                            'data_files':item.spec.data_files,'sources':item.spec.sources,
+                            'formats':[n for n in rendered if n.startswith('figures/')],
+                            'width_mm':geometry['width_mm'],'height_mm':geometry['height_mm'],
+                            'rasterized_heatmap':geometry['rasterized_heatmap']})
+        put('project/workflow.json',canonical(workflow))
+        selected=set(workflow.get('processing_ids',[]))
+        put('project/processing-snapshots.json',canonical([p.model_dump(mode='json') for p in project.processing if p.id in selected]))
+        selected_runs=set(workflow.get('fit_run_ids',[]))
+        put('project/fit-runs.json',canonical([r.model_dump(mode='json') for r in project.runs if r.id in selected_runs]))
+        put('tables/decisions.json',canonical(workflow.get('decisions',[])))
+        put('tables/issues.json',canonical(workflow.get('issues',[])))
+        put('tables/features.json',canonical(workflow.get('features',[])))
+        put('tables/lcf.json',canonical(workflow.get('lcf_results',[])))
     for index,lcf in enumerate(workflow.get('lcf_results',[])):
         put(f'tables/lcf-{index:03d}.csv',_csv(['dataset_id','reference_id','reference_component_coefficient'],
             ((lcf['dataset_id'],rid,c) for rid,c in zip(lcf.get('reference_ids',[]),lcf.get('coefficients',[])))))
@@ -385,10 +432,16 @@ def build_delivery(store, project_id, workflow_id, style=None, presentation='leg
                 'statistics':run.result.statistics.model_dump(mode='json'),
                 'uncertainty_basis':run.result.uncertainty_basis,'converged':run.result.converged,
                 'warnings':run.result.warnings}))
+    from pathlib import Path
+    method_page=(Path(__file__).parents[1] / 'static' / 'methods.html').read_text(encoding='utf-8')
+    method_page=method_page.replace('<script src="/static/methods-examples.js" defer></script>', '').replace('href="/auto"', 'href="../README.html"').replace('分析工作台 ↗','离线报告 ↗')
+    put('methods/algorithms.html',method_page.encode('utf-8'))
+    if workflow.get('decomposition'):
+        put('tables/decomposition.json', store.read_asset(project.id, workflow['decomposition']))
     put('methods/methods.md',_methods(project,workflow,items,missing,style))
     put('README.html',_readme(project,workflow,records,missing))
     manifest={'format':'webxas-scientific-delivery','version':1,'project_id':project.id,
-              'presentation':presentation,'figure_families':figure_families,
+              'presentation':presentation,'figure_families':figure_families,'difference_pair':difference_pair,
               'snapshot_figures':snapshot_figures,'snapshot_missing':snapshot_missing,
               'source_project_revision':project.revision,'workflow_id':workflow_id,
               'workflow_sha256':hashlib.sha256(canonical(workflow)).hexdigest(),
@@ -401,7 +454,7 @@ def build_delivery(store, project_id, workflow_id, style=None, presentation='leg
     if store.read(project.id).revision!=project.revision:
         raise ProjectError('revision_conflict','渲染图件期间项目已更新，请重新导出。',project.id)
     stream=io.BytesIO()
-    with ZipFile(stream,'w',ZIP_DEFLATED) as archive:
+    with ZipFile(stream,'w',ZIP_DEFLATED, compresslevel=1) as archive:
         for name,blob in entries.items(): archive.writestr(name,blob)
     if len(stream.getvalue())>MAX_DELIVERY_BYTES:
         raise ProjectError('delivery_too_large','压缩交付包超过 250 MB，未发布不完整包。')
@@ -418,7 +471,7 @@ def run_job(payload, context):
         raise ProjectError('revision_conflict','任务提交后项目已更新。',project_id)
     context.heartbeat('scientific_figures',.1)
     blob=build_delivery(store,project_id,payload['workflow_id'],payload.get('style'),
-                        payload.get('presentation','legacy'),payload.get('figure_families'))
+                        payload.get('presentation','legacy'),payload.get('figure_families'),payload.get('difference_pair'))
     context.heartbeat('scientific_figures',.9)
     with ZipFile(io.BytesIO(blob)) as archive: manifest=json.loads(archive.read('manifest.json'))
     if manifest['source_project_revision']!=expected:
@@ -428,7 +481,8 @@ def run_job(payload, context):
             'source_project_revision':expected,'workflow_sha256':manifest['workflow_sha256'],
             'created_at':datetime.now(timezone.utc).isoformat(),'asset':asset.model_dump(mode='json'),
             'figures':manifest['figures'],'missing':manifest['missing'],'style':manifest['style'],
-            'presentation':manifest.get('presentation','legacy'),'figure_families':manifest.get('figure_families')}
+            'presentation':manifest.get('presentation','legacy'),'figure_families':manifest.get('figure_families'),
+            'difference_pair':manifest.get('difference_pair')}
     value=project.model_dump(mode='json')
     value['metadata'].setdefault('automation_deliveries',[]).append(record)
     store.save(Project.model_validate(value),expected_revision=expected)

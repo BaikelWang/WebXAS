@@ -1,0 +1,429 @@
+{
+  "format": "webxas-project",
+  "schema_version": 1,
+  "id": "b839f272-740c-430e-a932-a67eceff12e4",
+  "title": "joint schema example",
+  "revision": 0,
+  "datasets": [
+    {
+      "id": "dataset_0",
+      "raw_file": {
+        "path": "raw/contract_0.txt",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 1
+      },
+      "filename": "contract_0.txt",
+      "kind": "chi",
+      "raw_text": null,
+      "mapping": {
+        "energy": 0,
+        "signal": 1,
+        "reference": 2,
+        "mode": "mu",
+        "energy_unit": "eV"
+      },
+      "element": "Cu",
+      "edge": "K",
+      "sample_id": "sample_example",
+      "conditions": {
+        "temperature_K": 100
+      },
+      "arrays": {},
+      "mask": null,
+      "lineage": [],
+      "reference_dataset_id": null,
+      "correction_states": {},
+      "metadata": {
+        "contract_example": true,
+        "not_experimental_data": true
+      }
+    },
+    {
+      "id": "dataset_1",
+      "raw_file": {
+        "path": "raw/contract_1.txt",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "byte_size": 1
+      },
+      "filename": "contract_1.txt",
+      "kind": "chi",
+      "raw_text": null,
+      "mapping": {
+        "energy": 0,
+        "signal": 1,
+        "reference": 2,
+        "mode": "mu",
+        "energy_unit": "eV"
+      },
+      "element": "Cu",
+      "edge": "K",
+      "sample_id": "sample_example",
+      "conditions": {
+        "temperature_K": 200
+      },
+      "arrays": {},
+      "mask": null,
+      "lineage": [],
+      "reference_dataset_id": null,
+      "correction_states": {},
+      "metadata": {
+        "contract_example": true,
+        "not_experimental_data": true
+      }
+    }
+  ],
+  "processing": [
+    {
+      "id": "processed_0",
+      "dataset_id": "dataset_0",
+      "input_revision": 0,
+      "parameters": {
+        "e0": null,
+        "energy_shift": 0.0,
+        "pre1": -150.0,
+        "pre2": -30.0,
+        "norm1": 150.0,
+        "norm2": 700.0,
+        "nnorm": 2,
+        "rbkg": 1.0,
+        "bkg_kweight": 1,
+        "bkg_kmax": null,
+        "kmin": 2.0,
+        "kmax": 12.0,
+        "kweight": 2,
+        "dk": 1.0
+      },
+      "calibration_id": null,
+      "arrays": {},
+      "mask": null,
+      "noise": {
+        "source": "unknown",
+        "value": null,
+        "array": null,
+        "unit": "chi",
+        "processing_revision_id": null,
+        "estimation_range": null,
+        "assumptions": []
+      },
+      "engine_versions": {},
+      "resolved_calls": [],
+      "warnings": [],
+      "metadata": {}
+    },
+    {
+      "id": "processed_1",
+      "dataset_id": "dataset_1",
+      "input_revision": 0,
+      "parameters": {
+        "e0": null,
+        "energy_shift": 0.0,
+        "pre1": -150.0,
+        "pre2": -30.0,
+        "norm1": 150.0,
+        "norm2": 700.0,
+        "nnorm": 2,
+        "rbkg": 1.0,
+        "bkg_kweight": 1,
+        "bkg_kmax": null,
+        "kmin": 2.0,
+        "kmax": 12.0,
+        "kweight": 2,
+        "dk": 1.0
+      },
+      "calibration_id": null,
+      "arrays": {},
+      "mask": null,
+      "noise": {
+        "source": "unknown",
+        "value": null,
+        "array": null,
+        "unit": "chi",
+        "processing_revision_id": null,
+        "estimation_range": null,
+        "assumptions": []
+      },
+      "engine_versions": {},
+      "resolved_calls": [],
+      "warnings": [],
+      "metadata": {}
+    }
+  ],
+  "calibrations": [],
+  "structures": [],
+  "paths": [
+    {
+      "id": "path_0",
+      "source_file": {
+        "path": "paths/contract_0.dat",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 1
+      },
+      "feff_input": null,
+      "feff_program_sha256": null,
+      "structure_id": null,
+      "absorber_element": "Cu",
+      "edge": "K",
+      "absorber_site": "site0",
+      "nleg": 2,
+      "reff": 2.55,
+      "degen": 12.0,
+      "geometry": [],
+      "k_min": 0.0,
+      "k_max": 20.0,
+      "engine_versions": {},
+      "metadata": {
+        "contract_example": true
+      }
+    },
+    {
+      "id": "path_1",
+      "source_file": {
+        "path": "paths/contract_1.dat",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "byte_size": 1
+      },
+      "feff_input": null,
+      "feff_program_sha256": null,
+      "structure_id": null,
+      "absorber_element": "Cu",
+      "edge": "K",
+      "absorber_site": "site0",
+      "nleg": 2,
+      "reff": 2.57,
+      "degen": 12.0,
+      "geometry": [],
+      "k_min": 0.0,
+      "k_max": 20.0,
+      "engine_versions": {},
+      "metadata": {
+        "contract_example": true
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "example_model",
+      "revision": 0,
+      "title": "joint contract example",
+      "bindings": [
+        {
+          "dataset_id": "dataset_0",
+          "processing_revision_id": "processed_0",
+          "paths": [
+            {
+              "id": "binding_0",
+              "path_id": "path_0",
+              "enabled": true,
+              "expressions": {
+                "s02": "s02_0",
+                "e0": "e0_0",
+                "deltar": "shared_R - reff_0",
+                "sigma2": "sigma2_0"
+              },
+              "amplitude_semantics": "scale",
+              "cn_group_id": null,
+              "geometry_basis": ""
+            }
+          ],
+          "transform": {
+            "fitspace": "r",
+            "kmin": 2.0,
+            "kmax": 12.0,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "kweight": 2,
+            "dk": 1.0,
+            "window": "hanning",
+            "kstep": 0.05,
+            "nfft": 2048
+          },
+          "noise": {
+            "source": "engine_estimate",
+            "value": null,
+            "array": null,
+            "unit": "chi",
+            "processing_revision_id": null,
+            "estimation_range": null,
+            "assumptions": [
+              "White-noise estimate must be checked when real spectra are supplied."
+            ]
+          }
+        },
+        {
+          "dataset_id": "dataset_1",
+          "processing_revision_id": "processed_1",
+          "paths": [
+            {
+              "id": "binding_1",
+              "path_id": "path_1",
+              "enabled": true,
+              "expressions": {
+                "s02": "s02_1",
+                "e0": "e0_1",
+                "deltar": "shared_R - reff_1",
+                "sigma2": "sigma2_1"
+              },
+              "amplitude_semantics": "scale",
+              "cn_group_id": null,
+              "geometry_basis": ""
+            }
+          ],
+          "transform": {
+            "fitspace": "r",
+            "kmin": 2.0,
+            "kmax": 12.0,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "kweight": 2,
+            "dk": 1.0,
+            "window": "hanning",
+            "kstep": 0.05,
+            "nfft": 2048
+          },
+          "noise": {
+            "source": "engine_estimate",
+            "value": null,
+            "array": null,
+            "unit": "chi",
+            "processing_revision_id": null,
+            "estimation_range": null,
+            "assumptions": [
+              "White-noise estimate must be checked when real spectra are supplied."
+            ]
+          }
+        }
+      ],
+      "parameters": {
+        "nodes": [
+          {
+            "id": "shared_R",
+            "label": "",
+            "unit": "angstrom",
+            "scope": "global",
+            "owner_id": null,
+            "kind": "free",
+            "value": 2.6,
+            "minimum": 2.4,
+            "maximum": 2.8,
+            "expression": null,
+            "physical_basis": "Contract example of a declared common atom-pair distance; not an experimental claim."
+          },
+          {
+            "id": "s02_0",
+            "label": "",
+            "unit": "1",
+            "scope": "dataset",
+            "owner_id": "dataset_0",
+            "kind": "fixed",
+            "value": 0.9,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "e0_0",
+            "label": "",
+            "unit": "eV",
+            "scope": "dataset",
+            "owner_id": "dataset_0",
+            "kind": "free",
+            "value": 0.0,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "sigma2_0",
+            "label": "",
+            "unit": "angstrom2",
+            "scope": "dataset",
+            "owner_id": "dataset_0",
+            "kind": "free",
+            "value": 0.003,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "reff_0",
+            "label": "",
+            "unit": "angstrom",
+            "scope": "dataset",
+            "owner_id": "dataset_0",
+            "kind": "fixed",
+            "value": 2.55,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "s02_1",
+            "label": "",
+            "unit": "1",
+            "scope": "dataset",
+            "owner_id": "dataset_1",
+            "kind": "fixed",
+            "value": 0.9,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "e0_1",
+            "label": "",
+            "unit": "eV",
+            "scope": "dataset",
+            "owner_id": "dataset_1",
+            "kind": "free",
+            "value": 0.0,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "sigma2_1",
+            "label": "",
+            "unit": "angstrom2",
+            "scope": "dataset",
+            "owner_id": "dataset_1",
+            "kind": "free",
+            "value": 0.003,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          },
+          {
+            "id": "reff_1",
+            "label": "",
+            "unit": "angstrom",
+            "scope": "dataset",
+            "owner_id": "dataset_1",
+            "kind": "fixed",
+            "value": 2.57,
+            "minimum": null,
+            "maximum": null,
+            "expression": null,
+            "physical_basis": ""
+          }
+        ]
+      },
+      "coordination_groups": [],
+      "notes": "Schema contract only. This project contains no executable FEFF paths or measured spectra."
+    }
+  ],
+  "runs": [],
+  "migration_report": [],
+  "recomputable": false,
+  "metadata": {
+    "contract_example": true,
+    "not_experimental_data": true,
+    "placeholder_assets": true
+  }
+}

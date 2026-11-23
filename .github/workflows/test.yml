@@ -1,0 +1,58 @@
+name: Installed wheel and scientific regressions
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    env:
+      PYTHONUTF8: '1'
+      MPLBACKEND: Agg
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install scientific figure fonts on Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' | sudo debconf-set-selections
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ttf-mscorefonts-installer
+          fc-cache -f
+      - name: Build and install wheel
+        shell: bash
+        run: |
+          python -m pip wheel --no-deps --wheel-dir dist .
+          python -m pip install "dist/$(ls dist)[test]"
+          python -m pip check
+      - name: Acquire checksummed public inputs
+        run: python tools/fetch_test_inputs.py
+      - name: Verify installed wheel outside checkout
+        run: python tools/wheel_smoke.py
+      - name: Verify Windows-specific regressions actually execute
+        if: runner.os == 'Windows'
+        run: |
+          python -m pytest -q package/app/tests/pro/test_jobs.py::test_deep_windows_job_directory package/app/tests/pro/test_review_regressions.py::test_transient_shared_read_does_not_fail_atomic_heartbeat --junitxml=test-results-windows.xml
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -c "import xml.etree.ElementTree as E; t=E.parse('test-results-windows.xml').find('testsuite'); assert int(t.get('tests')) == 2 and all(int(t.get(k)) == 0 for k in ('skipped','failures','errors'))"
+      - name: Run regression suite
+        run: python -m pytest -q package/app/tests --junitxml=test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-${{ matrix.os }}
+          path: test-results*.xml

@@ -32,3 +32,17 @@ py -3.12 -m venv .venv
 - Fourier 变换所得相位未校正的 R 空间峰位需要结合理论路径和拟合解释。
 - 拟合结果依赖给定的结构模型、路径、拟合窗口及噪声处理。结合残差、参数相关性和不确定度进行判断。
 - 合成示例用于验证软件行为和同引擎计算。实验精度评估需要来源明确的参考谱、可复核的分析条件和不确定度。
+
+## 公开验证与安装包自检
+
+[方法、实验图件与科学验证](docs/verification.md) 汇总八类方法的证据范围，并标明 G03 定量验收结果。运行服务后可在[方法与实验示例](http://127.0.0.1:8011/methods)查看公开图件及其数据出处。严格 Times New Roman 模板需要系统已安装该字体的常规、粗体、斜体和粗斜体字形。科学图件导出使用系统字体。
+
+在新建的 Python 3.12 虚拟环境中，从仓库根目录构建 wheel，并执行独立安装测试。命令适用于已激活环境的 PowerShell 或 Bash。
+
+```bash
+python -m pip wheel --no-deps --wheel-dir dist .
+python -c "import glob, subprocess, sys; wheels = glob.glob('dist/*.whl'); assert len(wheels) == 1; subprocess.check_call([sys.executable, '-m', 'pip', 'install', wheels[0] + '[test]'])"
+python tools/wheel_smoke.py
+```
+
+测试脚本从上游固定提交取回 ZnSe 实测谱、校验原始字节，在临时目录启动服务，导入实际谱，并将专业工程导出为 ZIP 后重新打开。用户也可在专业工作台执行相同步骤。默认运行目录是启动位置的 `.runtime`，可通过 `XASWEB_RUNTIME_ROOT` 指定。实验数据和理论路径各自保留上游归属与适用条件。

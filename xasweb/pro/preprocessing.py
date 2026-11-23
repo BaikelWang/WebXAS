@@ -5,10 +5,15 @@ from uuid import uuid4
 import numpy as np
 
 from ..models import AnalysisRequest, Parameters
-from ..science import analyze
 from ..ingest import InputError, parse_ascii, construct_mu
 from .contracts import ArrayRef, Dataset, NoiseSpec, ProcessingRevision, Project
 from .projects import ProjectError, ProjectStore
+
+
+def analyze(request, *, normalization_only=False):
+    """Load the numerical engine only for operations that process a spectrum."""
+    from ..science import analyze as analyze_spectrum
+    return analyze_spectrum(request, normalization_only=normalization_only)
 
 
 def save_array(store, project_id, values):
@@ -43,7 +48,7 @@ def validate_noise(store,project_id,noise,processing_id,k_size=None):
     return NoiseSpec.model_validate(value)
 
 
-def process_dataset(store,project_id,dataset_id,parameters=None,mask=None,calibration_id=None,noise=None):
+def process_dataset(store,project_id,dataset_id,parameters=None,mask=None,calibration_id=None,noise=None,*,normalization_only=False):
     project=store.read(project_id)
     dataset=next((x for x in project.datasets if x.id==dataset_id),None)
     if dataset is None:
@@ -93,11 +98,14 @@ def process_dataset(store,project_id,dataset_id,parameters=None,mask=None,calibr
     warnings=[]
     if dataset.kind=='mu':
         text='\n'.join(header)+'\n'+'\n'.join(' '.join(format(x,'.17g') for x in row) for row in filtered)
-        result=analyze(AnalysisRequest(filename=dataset.filename,raw_text=text,mapping=mapping,parameters=Parameters.model_validate(resolved)))
+        result=analyze(AnalysisRequest(filename=dataset.filename,raw_text=text,mapping=mapping,parameters=Parameters.model_validate(resolved)),
+                       normalization_only=normalization_only)
         arrays=result['arrays'];warnings=list(result['warnings'])
         calls=[{'operation':name,'arguments':value} for name,value in result['resolved_calls'].items()]
         metrics=result['metrics']
     else:
+        if normalization_only:
+            raise ProjectError('xanes_requires_mu', 'XANES 归一化需要 μ(E)。', dataset_id)
         if calibration is not None or user_parameters.energy_shift!=0:
             raise ProjectError('chi_energy_shift','chi(k) 输入不接受能量偏移；请从原始 mu(E) 重新提取。')
         from larch import Group
@@ -120,8 +128,8 @@ def process_dataset(store,project_id,dataset_id,parameters=None,mask=None,calibr
         calls=[{'operation':'xftf','arguments':settings}]
         metrics={}
     processing_id='pp_'+uuid4().hex
-    chosen_noise=noise or NoiseSpec(source='engine_estimate',estimation_range=[15.0,30.0],assumptions=['white_noise_high_R'])
-    chosen_noise=validate_noise(store,project_id,chosen_noise,processing_id,len(arrays['k']))
+    chosen_noise=NoiseSpec() if normalization_only else (noise or NoiseSpec(source='engine_estimate',estimation_range=[15.0,30.0],assumptions=['white_noise_high_R']))
+    chosen_noise=validate_noise(store,project_id,chosen_noise,processing_id,len(arrays['k']) if 'k' in arrays else None)
     if any(value in ('unknown','uncorrected') for value in dataset.correction_states.values()):
         warnings.append('实验修正状态未全部验证，定量解释仍受测量条件限制。')
     return ProcessingRevision(id=processing_id,dataset_id=dataset_id,input_revision=project.revision,
@@ -129,7 +137,7 @@ def process_dataset(store,project_id,dataset_id,parameters=None,mask=None,calibr
         arrays={name:save_array(store,project_id,value) for name,value in arrays.items()},
         mask=save_array(store,project_id,selected),noise=chosen_noise,
         engine_versions={'xraylarch':'2026.3.1'},resolved_calls=calls,warnings=warnings,
-        metadata={'metrics':metrics,'effective_energy_shift_eV':resolved['energy_shift'],'source_sha256':dataset.raw_file.sha256,
+        metadata={'metrics':metrics,'normalization_only':normalization_only,'effective_energy_shift_eV':resolved['energy_shift'],'source_sha256':dataset.raw_file.sha256,
                   'input_mapping':dataset.mapping.model_dump(mode='json'),'input_kind':dataset.kind,
                   'input_kweight':dataset.metadata.get('input_kweight',0)})
 
@@ -224,7 +232,8 @@ def run_job(payload,context):
     if project.revision!=payload['expected_revision']:
         raise ProjectError('revision_conflict','任务提交后项目已更新。',project_id)
     processing=process_dataset(store,project_id,payload['dataset_id'],payload.get('parameters'),
-        payload.get('mask'),payload.get('calibration_id'),payload.get('noise'))
+        payload.get('mask'),payload.get('calibration_id'),payload.get('noise'),
+        normalization_only=payload.get('normalization_only', False))
     if processing.input_revision!=payload['expected_revision']:
         raise ProjectError('revision_conflict','读取处理数据时项目已更新，请重新提交。',project_id)
     context.heartbeat('preprocessing',1.0)
