@@ -149,7 +149,24 @@ $('export').onclick=action(async()=>{
    return;
  }
  exportSummary();renderDifferenceControls();$('export-status').textContent='';openDialog('export-dialog');});$('preset').onchange=preset;for(const id of ['layout','dpi','language','font-size','line-width','palette','show-legend'])$(id).onchange=()=>{$('preset').value='custom';exportSummary();};
-$('redraw').onclick=action(async()=>{busy(true);await createDelivery();});$('download').onclick=action(async()=>{busy(true);if(!S.delivery||S.delivery.presentation!=='individual'||JSON.stringify(S.delivery.difference_pair||null)!==JSON.stringify(differencePair())||JSON.stringify([...(S.delivery.figure_families||[])].sort())!==JSON.stringify([...selectedFamilies()].sort())||Object.entries(style()).some(([k,v])=>JSON.stringify(S.delivery.style?.[k])!==JSON.stringify(v)))await createDelivery();await downloadResponse(await fetch(auto('/deliveries/'+S.delivery.id+'/download')),'WebXAS-research-figures.zip');$('export-status').textContent='下载已开始。';});
+function matchesDeliveryOptions(delivery){
+ if (!delivery || delivery.workflow_id!==S.workflow?.id || delivery.presentation!=='individual') return false;
+ if (JSON.stringify(delivery.difference_pair||null)!==JSON.stringify(differencePair())) return false;
+ const families=[...(delivery.figure_families||[])].sort();
+ if (JSON.stringify(families)!==JSON.stringify([...selectedFamilies()].sort())) return false;
+ // Classic deliveries omit the default profile in their immutable manifest.
+ const savedStyle={profile:'classic',...delivery.style};
+ return Object.entries(style()).every(([key,value])=>savedStyle[key]===value);
+}
+$('redraw').onclick=action(async()=>{
+ if(matchesDeliveryOptions(S.delivery)){$('export-status').textContent='当前图件已是所选样式。';return;}
+ await createDelivery();
+});
+$('download').onclick=action(async()=>{
+ if(!matchesDeliveryOptions(S.delivery))await createDelivery();
+ await downloadResponse(await fetch(auto('/deliveries/'+S.delivery.id+'/download')),'WebXAS-research-figures.zip');
+ $('export-status').textContent='下载已开始。';
+});
 $('regenerate').onclick=action(async()=>{if(!selectedFamilies().length)throw Error('请至少选择一种图件');await createDelivery();});
 preset();try{const s=JSON.parse(localStorage.getItem('webxas-ui-style-v2')||'null');if(s)applyStyle(s);}catch{}renderTask();renderOutput();
 (async()=>{const pid=new URLSearchParams(location.search).get('project')||localStorage.getItem('webxas-auto-project');if(!pid)return;try{setProject(await api('/api/pro/projects/'+encodeURIComponent(pid)),true);await hydrateDelivery();renderOutput();if(S.delivery?.style)applyStyle(S.delivery.style);const saved=JSON.parse(localStorage.getItem('webxas-auto-job')||'null');if(saved?.project===pid){busy(true);const result=await waitJob(saved.job);setProject(await api(pro('')));if(saved.job.operation==='auto'){S.workflow=S.project.metadata.automation_runs.find(w=>w.id===result.id);await createDelivery();}else{S.workflow=S.project.metadata.automation_runs.find(w=>w.id===result.workflow_id);if(!S.workflow)throw Error('图件对应的分析历史不存在');S.delivery=result;$('history').value=S.workflow.id;renderOutput();}busy(false);}await preflight();}catch(e){$('error').textContent=e.message;$('error').hidden=false;busy(false);}})();
