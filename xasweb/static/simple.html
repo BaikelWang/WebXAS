@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WebXAS · 上传，分析，结果</title><link rel="icon" href="/static/favicon.svg"><link rel="stylesheet" href="/static/simple.css"><script defer src="/static/simple.js"></script></head>
-<body><header><a class="brand" href="/">χ <span>WEB XAS</span></a><span class="local-badge">● 数据在本机处理</span><a class="knowledge-link" href="/knowledge" target="_blank" rel="noopener">知识库 ↗</a></header>
+<body><header><a class="brand" href="/">χ <span>WEB XAS</span></a><span class="local-badge">快速初筛</span><a href="/auto">分析工作台</a><a class="knowledge-link" href="/knowledge" target="_blank" rel="noopener">知识库 ↗</a></header>
 <main><div class="heading"><p class="eyebrow">EXAFS / MINIMAL WORKFLOW</p><h1>从光谱到局域结构</h1><p>上传数据，自动分析。只报告证据支持的结果。</p></div>
 <ol class="workflow" aria-label="分析进度"><li id="step-upload" aria-current="step">01 <span>上传</span></li><li id="step-process">02 <span>自动分析</span></li><li id="step-results">03 <span>结果</span></li></ol>
 <section id="upload-panel" class="upload-panel"><span class="upload-icon" aria-hidden="true">↥</span><h2>把光谱和支持文件拖到这里</h2><p>实验光谱必需 · CIF、坐标、FEFF 路径、参考谱和样品说明可选</p><label for="file" id="import-label" class="button" role="button" tabindex="0">选择文件</label><input id="file" type="file" multiple hidden><p class="muted">自动识别文件用途并补齐元素与吸收边，无法推断时可手动填写。</p></section>

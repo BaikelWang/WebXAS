@@ -51,7 +51,23 @@ function loadWorkflowControls(w) {
 }
 function renderModes() {
   $('mode-cards').innerHTML = MODES.map(([id,name,description,number])=>`<button class="mode-card" data-mode="${id}" role="radio" aria-checked="${$('task').value===id}"><span class="mode-number">${number}</span><strong>${name}</strong><small>${description}</small></button>`).join('');
-  document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=action(async()=>{
+  const radios=[...document.querySelectorAll('[data-mode]')];
+  radios.forEach((el,index)=>{
+    el.tabIndex=el.getAttribute('aria-checked')==='true'?0:-1;
+    el.onkeydown=async event=>{
+      let at=index;
+      if(['ArrowRight','ArrowDown'].includes(event.key))at=(index+1)%radios.length;
+      else if(['ArrowLeft','ArrowUp'].includes(event.key))at=(index+radios.length-1)%radios.length;
+      else if(event.key==='Home')at=0;
+      else if(event.key==='End')at=radios.length-1;
+      else return;
+      event.preventDefault();
+      const id=radios[at].dataset.mode;
+      await radios[at].onclick();
+      document.querySelector('[data-mode="'+id+'"]')?.focus();
+    };
+  });
+  radios.forEach(el=>el.onclick=action(async()=>{
     if ($('task').value===el.dataset.mode) return;
     $('task').value=el.dataset.mode;
     S.operations = el.dataset.mode==='exafs' ? ['structural_fit'] : [];

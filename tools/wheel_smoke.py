@@ -22,6 +22,9 @@ def check_server(client, raw):
     assert health['application_version'] == version('xasweb-pilot')
     for route in ('/', '/auto', '/pro', '/knowledge', '/methods'):
         assert client.get(route).raise_for_status().text
+    closure = client.get('/static/validation-closure.json').raise_for_status().json()
+    assert not closure['Fe']['physical_gate_pass'] and not closure['Cu10K']['overall_pass']
+    assert closure['KEK']['overall_pass'] and closure['NIMS']['overall_pass']
     manifest = client.get('/validation/manifest.json').raise_for_status().json()
     assert len(manifest['figures']) == 8
     for record in manifest['figures']:

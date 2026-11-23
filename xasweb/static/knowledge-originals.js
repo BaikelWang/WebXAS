@@ -82,9 +82,13 @@
   function renderNotes(notes, jumpToPage, title = '解读笔记') {
     const panel = element('aside', 'original-reader__notes');
     panel.setAttribute('aria-label', title);
-    panel.append(element('h2', null, title));
+    const narrow = matchMedia('(max-width: 760px)').matches;
+    const disclosure = element('details','annotation-fold');
+    disclosure.open = !narrow;
+    disclosure.append(element('summary',null,title));
+    panel.append(disclosure);
     if (!Array.isArray(notes) || !notes.length) {
-      panel.append(element('p', 'original-reader__message', '暂无解读笔记。'));
+      disclosure.append(element('p', 'original-reader__message', '暂无解读笔记。'));
       return panel;
     }
 
@@ -106,7 +110,7 @@
       item.append(element('p', 'original-reader__note-text', note.text));
       list.append(item);
     }
-    panel.append(list);
+    disclosure.append(list);
     return panel;
   }
 

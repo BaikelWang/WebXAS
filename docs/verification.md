@@ -26,3 +26,5 @@ G04、G05、G06 提供数据出处和处理边界。ZnSe 验证脚本按固定�
 在公开仓库的干净检出中执行 `python tools/sync_candidate.py /path/to/candidate/package/app 0.5.2rc2`。该脚本逐个导入 `tools/release-files.txt` 中审核过的源码路径，并适配安装后的数据目录。审阅新增及已删除文件、公共知识库、图库署名、数据许可、实际 wheel 文件清单及差异。测试夹具由 `tools/fetch_test_inputs.py` 按上游提交与 SHA-256 重建。
 
 在 Python 3.12 环境安装 `.[test]` 后执行 `python tools/fetch_test_inputs.py` 与 `python -m pytest -q package/app/tests`。严格排版回归要求系统的 Times New Roman 四种字形，Arial 或 Liberation Sans 用于无衬线模板。Windows 专用用例覆盖深路径 worker 和共享读取时的心跳更新。源码回归和隔离目录中的 wheel 测试使用独立入口。
+
+[RC2 数值摘要](rc2-scientific-results.json) 保留各项对照的公开输入哈希、冻结结果哈希、单位及误差。G03 胶带样品同时列出称量的质量分数、Fe 原子系数、换算的质量分数和百分点误差。图表中的 LCF 展示窗口与质量分数验收窗口各自单独记录。

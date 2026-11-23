@@ -33,10 +33,11 @@ function figureCard(f,index) {
   return `<article class="figure-card" id="result-${esc(f.id)}" data-figure="${esc(f.id)}">
     <div class="figure-heading"><h3 title="${esc(f.title)}">${esc(moduleTitle(f))}</h3><span class="sample-badge" title="${esc(sample)}">${esc(sample)}</span></div>
     <button class="figure-open" data-zoom="${esc(f.id)}" aria-label="放大查看 ${esc(f.title)}"><img loading="lazy" decoding="async" src="${previewURL(f)}" alt="${esc(f.title)}"><span>放大查看 ↗</span></button>
-    <div class="figure-analysis">${display.summary?`<p class="result-text">${esc(display.summary)}</p>`:''}
+    <div class="figure-analysis">
+    ${f.family==='F09'?'<p class="quantitation-note">组分定量仍有一份标样超出验证范围。<a href="/methods#lcf">查看验证</a></p>':''}${display.summary?`<p class="result-text">${esc(display.summary)}</p>`:''}
     ${metrics.length?`<div class="metrics">${metrics.slice(0,2).map(m=>`<div><span>${esc(m.label)}</span><strong>${esc(metricValue(m))}</strong></div>`).join('')}</div>`:''}
     ${(display.notices||[]).length?`<div class="figure-notices">${display.notices.map(t=>`<p>${esc(t)}</p>`).join('')}</div>`:''}</div>
-    <div class="figure-footer"><div class="download-actions"><details class="download-menu"><summary>↓ 下载图片</summary><div>${links||'<span>请重新生成图件</span>'}</div></details><details class="download-menu"><summary>↓ 下载该图数据</summary><div>${data||'<span>此图没有独立数据文件</span>'}</div></details></div>
+    <div class="figure-footer"><div class="download-actions"><details class="download-menu"><summary>下载图片</summary><div>${links||'<span>请重新生成图件</span>'}</div></details><details class="download-menu"><summary>下载数据</summary><div>${data||'<span>此图没有独立数据文件</span>'}</div></details></div>
     <details class="figure-source"><summary>本图参数</summary><a href="/methods#${methodSection}" target="_blank" rel="noopener">算法与验证 ↗</a>${basis?`<p>${esc(basis.summary)}</p>`:''}${refs?`<p>${refs}</p>`:''}${fullMetrics.length?`<dl class="metric-definitions">${fullMetrics.map(m=>`<dt>${esc(m.label)} · ${esc(metricValue(m))}</dt><dd>${esc(m.basis||'')}</dd>`).join('')}</dl>`:''}${(i.observations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}${(i.limitations||[]).map(t=>`<p>${esc(t)}</p>`).join('')}<details><summary>来源信息</summary><pre>${esc(JSON.stringify({workflow_id:S.delivery.workflow_id,figure_id:f.id,method:i.method,sources:i.sources||f.sources},null,2))}</pre></details></details></div>
   </article>`;
 }
@@ -57,6 +58,7 @@ function renderFigureCards() {
   const selected=all.filter(f=>!$('sample-filter').value||(f.dataset_ids||[]).includes($('sample-filter').value));
   const order=f=>f.family==='F10'?-1:Number(f.family.slice(1));
   selected.sort((a,b)=>(a.family==='F10'?-1:0)-(b.family==='F10'?-1:0)||(a.dataset_ids||[]).join().localeCompare((b.dataset_ids||[]).join())||order(a)-order(b));
+  updateFigureIndex(selected,ids.length);
   $('figure-count').textContent=`${selected.length} 张图`;
   $('figure-list').innerHTML=selected.map((f,index)=>{const key=(f.dataset_ids||[]).join();const previous=selected[index-1];const heading=ids.length>1&&(index===0||key!==(previous?.dataset_ids||[]).join())?`<h3 class="sample-group">${esc((f.dataset_ids||[]).length>1?'跨样品分析':(f.display_sample_names||[]).join('、')||'运行结果')}</h3>`:'';return heading+figureCard(f,index);}).join('')||'<div class="empty-results"><h3>暂无图件</h3><p>选择图件后点击生成。</p></div>';
   document.querySelectorAll('[data-zoom]').forEach(el=>el.onclick=()=>{

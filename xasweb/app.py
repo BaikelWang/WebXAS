@@ -68,6 +68,11 @@ async def input_error(_, exc):
 
 @app.get("/")
 def index():
+    return FileResponse(static / "auto.html")
+
+
+@app.get("/quick")
+def quick_screen():
     return FileResponse(static / "simple.html")
 
 

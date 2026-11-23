@@ -1,0 +1,10 @@
+body{background:#f7f8f5;color:#1e3028;font-family:"Instrument Sans",Arial,"Microsoft YaHei",sans-serif}.pro-header{max-width:none;height:63px;gap:28px;padding:0 max(20px,calc((100% - 1232px)/2));border-bottom:1px solid #dce4dc}.pro-header>.brand{font-size:22px;letter-spacing:-.04em}.pro-header nav{display:flex;gap:18px}.pro-header nav a,.steps a{color:#315a46}.pro-header>span{margin-left:auto;color:#5c695e;font-size:13px}
+main{max-width:1280px}.card{border-color:#dce4dc;border-radius:12px;box-shadow:none}.project-title h1{letter-spacing:-.025em}.project-extra{max-width:640px;margin-top:6px}.project-extra summary{font-size:13px}.project-title .badge:empty{display:none}
+body:not(.has-project) .workspace,body:not(.has-project) #revision,body:not(.has-project) #export-project{display:none}
+body:not(.has-model) .model-fields{display:none}
+.steps{flex-wrap:wrap;gap:6px}.steps a{padding:8px 12px;background:#eff2ec}.steps a[aria-current]{color:white;background:#295844}
+body[data-pro-stage=data-section] :is(#model-section,#result-section),body[data-pro-stage=model-section] :is(#data-section,#result-section),body[data-pro-stage=result-section] :is(#data-section,#model-section){display:none}
+#job-panel:not([hidden]){background:#edf3ee;padding:14px 20px;border:1px solid #c4d5ca;border-radius:10px;margin:12px 0}
+#status:empty,.model-fields:empty{display:none}
+:focus-visible{outline:3px solid #4a826b;outline-offset:3px}
+@media(max-width:650px){.pro-header{padding:10px 14px;gap:12px;flex-wrap:wrap;height:auto}.pro-header nav{gap:9px}.pro-header>span{font-size:12px}.project-extra .toolbar{display:grid}.steps a{font-size:12px;padding:6px 8px}.workspace .sidebar{margin-bottom:12px}}

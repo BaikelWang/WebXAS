@@ -191,3 +191,8 @@ button.original-reader__locator:hover { border-color: var(--original-accent); }
   .original-reader__preview { position: static; }
   .original-reader__frame { height: clamp(290px, 62dvh, 680px); }
 }
+
+.annotation-fold>summary{font-size:1.1rem;color:var(--original-ink,#314338);font-weight:600;cursor:pointer}
+.annotation-fold[open]>summary{margin-bottom:.8rem}
+@media(min-width:761px){.original-reader__layout{grid-template-columns:minmax(205px,.75fr) minmax(0,2.55fr)}}
+@media(max-width:760px){.original-reader__notes{padding:13px 16px}.original-reader__layout{grid-template-areas:'preview' 'notes';grid-template-columns:1fr}}

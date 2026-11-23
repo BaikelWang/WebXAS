@@ -435,6 +435,10 @@ def build_delivery(store, project_id, workflow_id, style=None, presentation='leg
     from pathlib import Path
     method_page=(Path(__file__).parents[1] / 'static' / 'methods.html').read_text(encoding='utf-8')
     method_page=method_page.replace('<script src="/static/methods-examples.js" defer></script>', '').replace('href="/auto"', 'href="../README.html"').replace('分析工作台 ↗','离线报告 ↗')
+    validation_numbers = Path(__file__).parents[1] / 'static' / 'validation-closure.json'
+    if validation_numbers.is_file():
+        put('methods/validation-closure.json', validation_numbers.read_bytes())
+        method_page = method_page.replace('href="/static/validation-closure.json"', 'href="validation-closure.json"')
     put('methods/algorithms.html',method_page.encode('utf-8'))
     if workflow.get('decomposition'):
         put('tables/decomposition.json', store.read_asset(project.id, workflow['decomposition']))

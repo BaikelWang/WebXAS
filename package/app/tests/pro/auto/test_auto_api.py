@@ -138,7 +138,10 @@ def test_task_entry_and_professional_link(client):
     assert '导出结果' in response.text
     assert 'question-dialog' in response.text
     assert 'auto.js' in response.text
-    assert '自动分析与科研绘图' in client.get('/pro').text
+    assert 'id="auto-return" href="/auto"' in client.get('/pro').text
+    assert client.get('/').text == response.text
+    assert 'simple.js' in client.get('/quick').text
+    assert 'workbench-view.js' in response.text
 
 
 def test_auto_page_versions_all_static_assets(client):

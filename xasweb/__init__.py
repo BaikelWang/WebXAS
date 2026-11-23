@@ -9,4 +9,4 @@ os.environ.setdefault("LARCHDIR", str(_runtime / "larch"))
 os.environ.setdefault("MPLCONFIGDIR", str(_runtime / "matplotlib"))
 os.environ.setdefault("XRAYLARCH_NO_PLOT", "1")
 
-__version__ = "0.5.2rc2"
+__version__ = "0.5.2rc3"

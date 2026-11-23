@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "title": "WebXAS experimental acceptance",
+  "preregistration_sha256": "d3a19150f9ce9fbb82ad1c070f377b3d9751774ecde2071d8ad34e0dac0c23ad",
+  "Fe": {
+    "status": "physical_gate_failed",
+    "numerical_parity_pass": true,
+    "physical_gate_pass": false,
+    "tape_cases": [
+      {
+        "sample": "30-70",
+        "truth_wt_percent": 31.8,
+        "estimated_wt_percent": 33.35358773166914,
+        "absolute_error_pp": 1.5535877316693036
+      },
+      {
+        "sample": "50-50",
+        "truth_wt_percent": 50.6,
+        "estimated_wt_percent": 47.74753505445875,
+        "absolute_error_pp": 2.852464945540473
+      },
+      {
+        "sample": "70-30",
+        "truth_wt_percent": 70.5,
+        "estimated_wt_percent": 55.760962220833974,
+        "absolute_error_pp": 14.739037779166154
+      }
+    ],
+    "tolerance_pp": 10,
+    "total_cases": 9,
+    "max_coefficient_delta": 7.827072323607354e-15,
+    "max_mass_fraction_delta": 7.771561172376096e-15,
+    "max_raw_mu_delta": 4.978684131629052e-12,
+    "sources": [
+      "https://doi.org/10.5281/zenodo.14959531",
+      "https://doi.org/10.1371/journal.pone.0323678"
+    ]
+  },
+  "Cu10K": {
+    "status": "heldout_gate_failed",
+    "overall_pass": false,
+    "shells": [
+      {
+        "shell": 1,
+        "distance_A": 2.5537002457767275,
+        "neutron_A": 2.544170198709198,
+        "absolute_error_A": 0.00953004706752969,
+        "profile95_A": [
+          2.5392586219141062,
+          2.5682459506334556
+        ]
+      },
+      {
+        "shell": 2,
+        "distance_A": 3.6076627774463015,
+        "neutron_A": 3.598,
+        "absolute_error_A": 0.009662777446301618,
+        "profile95_A": [
+          3.5602996571393613,
+          3.6562822117168894
+        ]
+      }
+    ],
+    "tolerances_A": [
+      0.02,
+      0.04
+    ],
+    "gates": {
+      "R1": true,
+      "R2": true,
+      "profiles": true,
+      "both_converged": true,
+      "heldout": false
+    },
+    "first_shell_holdout_rms": 0.5794480055030556,
+    "multi_shell_holdout_rms": 0.6378938698322388,
+    "relative_RMS_reduction": -0.10086472603947039,
+    "minimum_relative_RMS_reduction": 0.05,
+    "heldout_k_inverse_A": [
+      12.5,
+      15.0
+    ],
+    "MS_only_relative_RMS_reduction_diagnostic": 0.00208449723795745,
+    "sources": [
+      "https://www.xaslib.xrayabsorption.org/rawfile/91/cu_metal_10K.xdi",
+      "https://atomindonesia.brin.go.id/index.php/aij/article/download/28/20"
+    ]
+  },
+  "KEK": {
+    "status": "passed_conditional_foil_transfer",
+    "overall_pass": true,
+    "calibration_id": 146,
+    "target_id": 147,
+    "S02": 0.9319634264961478,
+    "S02_profile95": [
+      0.8573071274188295,
+      1.0122510242942664
+    ],
+    "N": 11.28288613596614,
+    "N_profile95": [
+      10.002240361140503,
+      12.726271651238637
+    ],
+    "N_fixed_S02_profile95": [
+      10.335433253404121,
+      12.305335579446195
+    ],
+    "native_joint_basis": "joint_reference",
+    "native_joint_N": 11.28288610502747,
+    "required_interval": [
+      9.6,
+      14.4
+    ],
+    "sources": [
+      "https://pfxafs.kek.jp/xafsdata/view.php?id=146",
+      "https://pfxafs.kek.jp/xafsdata/view.php?id=147"
+    ],
+    "source_terms": "KEK public academic research data; for publication citation contact the experimenter per database homepage."
+  },
+  "NIMS": {
+    "status": "supplemental_distances_pass",
+    "overall_pass": true,
+    "oxide_DOI": "10.48505/nims.3900",
+    "metal_control_DOI": "10.48505/nims.3899",
+    "oxide_temperature_K": 298.15,
+    "neutron_temperature_K": 295,
+    "oxide_date": "2022-09-16",
+    "metal_date": "2022-09-27",
+    "shells": [
+      {
+        "pair": "Cu-O",
+        "R_A": 1.8443024491653481,
+        "conditional_SE_A": 0.011519419164053192,
+        "neutron_A": 1.849,
+        "absolute_error_A": 0.004697550834651842,
+        "tolerance_A": 0.02,
+        "within_tolerance": true
+      },
+      {
+        "pair": "Cu-Cu",
+        "R_A": 3.004945627791602,
+        "conditional_SE_A": 0.016540639073390432,
+        "neutron_A": 3.02,
+        "absolute_error_A": 0.015054372208398004,
+        "tolerance_A": 0.04,
+        "within_tolerance": true
+      }
+    ],
+    "control_metal_R1_A": 2.5446982404974814,
+    "sources": {
+      "oxide": "https://doi.org/10.48505/nims.3900",
+      "metal": "https://doi.org/10.48505/nims.3899",
+      "neutron": "https://atomindonesia.brin.go.id/index.php/aij/article/download/217/163"
+    }
+  },
+  "scope": "Real, publicly available case-specific evidence. All nine Fe cases archived; the gate applies to the three tape samples. Cu held-out range shares preprocessing and is not a distinct experiment. KEK profile combines standard and target conditional residual scales. Aichi Cu2O is one separate oxide specimen. No production-wide physical accuracy claim."
+}

@@ -1,0 +1,201 @@
+{
+  "release": "v0.5.2-rc.2",
+  "engine": "xraylarch 2026.3.1",
+  "interpretation": "Selected numerical checks from the frozen RC2 comparisons. The G03 mass-fraction acceptance test did not pass. A same-engine match alone does not establish absolute physical accuracy.",
+  "checks": {
+    "G01-difference": {
+      "frozen_result_sha256": "e78603790d0cd9de5f90706d403a5b862b3fde44ce2077e0c9ed769a4e879c6b",
+      "values": {
+        "max_abs_error": 0.0,
+        "points": 1772
+      },
+      "inputs": [
+        {
+          "source": "https://zenodo.org/api/records/14959531/files/data.zip/content",
+          "sha256": "1ebee041df888274bff1c1588fe3e4626dbb9bec9b30e67a36d81c4af8bb4070"
+        }
+      ]
+    },
+    "G02-preedge": {
+      "frozen_result_sha256": "7902f4fbc31e217df19247cf09d2d03bd3e71eaf789e218e52fc975f225140ff",
+      "values": {
+        "analytic_area_eV": 0.3158351626032173,
+        "analytic_abs_error": 2.220446049250313e-16,
+        "pass": true,
+        "scope": "Independent authors function on exactly the same input flattened spectra; separate analytic known area/centroid. Original Au/Fe oxidation values, absolute energy calibration, full author reduction and a universal pre-edge area are not validated. Some standard DAT fluorescence fields are constant zero; no inferred calibration was substituted."
+      },
+      "inputs": [
+        {
+          "source": "https://zenodo.org/api/records/22554443/files/SAMPLES_DAT.zip/content",
+          "sha256": "f525f8f4350b27bb8f04fde3ddf4a50b02c2ec63910532a89591cae18b1fc8de"
+        },
+        {
+          "source": "https://zenodo.org/api/records/22554443/files/XANES_analysis_code_Zenodo.zip/content",
+          "sha256": "92d0a79f1f5c104722ca735472806334f85e7b9a0738176515c09b677e38e892"
+        }
+      ]
+    },
+    "G03-Praetz": {
+      "frozen_result_sha256": "882607730176f0587014b959a837d30759c9e6d5f66c616d479b95d6badda2b8",
+      "values": {
+        "window_eV": [
+          7102,
+          7432
+        ],
+        "tape_pass": false,
+        "paper_tape_abs_errors_pp": [
+          6.4,
+          6.6,
+          4.9
+        ],
+        "pellet_caveat": "70-30 two nominal preparations, author reports one unusable. Retain both as stress tests."
+      },
+      "inputs": [
+        {
+          "source": "https://zenodo.org/api/records/14959531/files/data.zip/content",
+          "sha256": "1ebee041df888274bff1c1588fe3e4626dbb9bec9b30e67a36d81c4af8bb4070"
+        }
+      ],
+      "tape_cases": [
+        {
+          "sample": "30-70",
+          "measured_phase_mass": 0.318,
+          "Fe_atom_coefficient": 0.32602853729964354,
+          "hematite_mass_fraction": 0.33353587731669304,
+          "absolute_error_pp": 1.5535877316693036
+        },
+        {
+          "sample": "50-50",
+          "measured_phase_mass": 0.506,
+          "Fe_atom_coefficient": 0.4690081304425131,
+          "hematite_mass_fraction": 0.4774753505445953,
+          "absolute_error_pp": 2.852464945540473
+        },
+        {
+          "sample": "70-30",
+          "measured_phase_mass": 0.705,
+          "Fe_atom_coefficient": 0.549214988546061,
+          "hematite_mass_fraction": 0.5576096222083384,
+          "absolute_error_pp": 14.739037779166154
+        }
+      ]
+    },
+    "G04-Cu-FT": {
+      "frozen_result_sha256": "83db183ef583d94c4b648898d8089f16954e7d8b870a4b2a24a5cc5639c28f97",
+      "values": {
+        "n_r": 196,
+        "max_abs_real_imag_complex_error": 2.5352557186998292e-14,
+        "oracle": "direct complex DFT sum of raw k^2 chi(k) with independent Hann window; dk/sqrt(pi), exp(-2ikR)",
+        "tolerance": 1e-08,
+        "pass": true
+      },
+      "inputs": [
+        {
+          "source": "https://www.xaslib.xrayabsorption.org/rawfile/91/cu_metal_10K.xdi",
+          "sha256": "6fd3823892d218e576b27674f3faff998ffdf4de261e9ac92ea40a42e6f1ba88"
+        }
+      ]
+    },
+    "G05-Cu10K": {
+      "frozen_result_sha256": "92f3996b7b0f31eeec967ddf37b691ce685dd6e07cff73b95b04f69d32bcad85",
+      "values": {
+        "R_A": 2.5493798678509987,
+        "diffraction_R_A": 2.544170198709198,
+        "abs_error_A": 0.005209669141800877,
+        "numerical_SE_A": 0.0037146237353413657,
+        "same_temperature_K": 10,
+        "pass": true
+      },
+      "inputs": [
+        {
+          "source": "https://www.xaslib.xrayabsorption.org/rawfile/91/cu_metal_10K.xdi",
+          "sha256": "6fd3823892d218e576b27674f3faff998ffdf4de261e9ac92ea40a42e6f1ba88"
+        }
+      ]
+    },
+    "G05-Cu-dual-temperature": {
+      "frozen_result_sha256": "f10a9635b6134eb88645d21a75eaddaf5dea6a3bdd45c5056cb83f5d62ef459c",
+      "values": {
+        "R10_A": 2.5307172806772833,
+        "R150_A": 2.5549301020262227,
+        "sigma2_10_A2": 0.003737482038925412,
+        "sigma2_150_A2": 0.005186735670273514,
+        "converged": true
+      },
+      "inputs": [
+        {
+          "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/cu/cu10k.chi",
+          "sha256": "f7fd81c6e2812b076b518a4bc82f1e5a754563f30331dee6b98c20d70c870742"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/cu/cu150k.chi",
+          "sha256": "69c925d41fc58db67a943b59af8e7eae1fdf4eafbb08238ed37cb9f1ebe94be2"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/cu/feff0001.dat",
+          "sha256": "b089e6f1b393d63c923e6b3ee4a646ebcda009f36dc9041739352aef77ab4d0f"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/cu/mdsfit.pl",
+          "sha256": "609596d346c37f6a0e482471151588f25f5c688256e15e5115f3a1412f93ab68"
+        }
+      ]
+    },
+    "G06-Cu-wavelet": {
+      "frozen_result_sha256": "3c8d6f729413f89f8676c60268dc9bc889765db0cb43a10d0151fbd2b2994c8b",
+      "values": {
+        "shape": [
+          186,
+          181
+        ],
+        "independent_discrete_Cauchy_max_abs": 5.2735593669694936e-15,
+        "tolerance": 1e-08,
+        "scope": "Numerical validation of the specified transform on experimental Cu. No experimentally measured wavelet truth or element identification.",
+        "pass": true
+      },
+      "inputs": [
+        {
+          "source": "https://www.xaslib.xrayabsorption.org/rawfile/91/cu_metal_10K.xdi",
+          "sha256": "6fd3823892d218e576b27674f3faff998ffdf4de261e9ac92ea40a42e6f1ba88"
+        }
+      ]
+    },
+    "G07-Praetz-composition": {
+      "frozen_result_sha256": "02cacc4fb858ec58ba1bf63f23e49b21ac4e8bdeac2623ff48b9ab53714bc8c4",
+      "values": {
+        "states_wt_percent": [
+          31.8,
+          50.6,
+          70.5
+        ],
+        "matrix_shape": [
+          3,
+          1772
+        ],
+        "matrix_max_abs_error": 0.0,
+        "pass": true
+      },
+      "inputs": [
+        {
+          "source": "https://zenodo.org/api/records/14959531/files/data.zip/content",
+          "sha256": "1ebee041df888274bff1c1588fe3e4626dbb9bec9b30e67a36d81c4af8bb4070"
+        }
+      ]
+    },
+    "G08-Au-independent-MCR": {
+      "frozen_result_sha256": "747aaeb2fd070cf17a52fb2258525351d3701f96ccfd663a7726966695960cfd",
+      "values": {
+        "method": "Independent optimization from three seeds: exhaustive simplex-face KKT concentration solves and scipy.optimize.nnls for every energy-channel spectrum; independently learned factors; no product initialization. Unanchored components are ambiguous.",
+        "product_relative_error": 0.0018620700487258425,
+        "absolute_difference_in_relative_error": 1.2699608153282638e-09,
+        "pass": true
+      },
+      "inputs": [
+        {
+          "source": "https://raw.githubusercontent.com/xraypy/xraylarch/2026.3.1/examples/pca/cyanobacteria.prj",
+          "sha256": "3c9c65d731f9304cf06791ef9d6b743d6cfdeb353f7ade9267bb50372f8e88d7"
+        }
+      ]
+    }
+  }
+}
