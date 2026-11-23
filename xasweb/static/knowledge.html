@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WebXAS · XAS 知识图书馆</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/knowledge.css?v=library-video-notes">
+  <link rel="stylesheet" href="/static/knowledge-originals.css?v=library-video-notes">
+  <link rel="stylesheet" href="/static/knowledge-shelf.css?v=library-video-and-doi">
+  <link rel="stylesheet" href="/static/knowledge-atlas.css?v=library-shelves-20261121">
+  <script src="/static/knowledge-originals.js?v=library-video-notes" defer></script>
+  <script src="/static/knowledge-shelf.js?v=library-video-and-doi" defer></script>
+  <script src="/static/knowledge-atlas.js?v=library-shelves-20261121" defer></script>
+  <script src="/static/knowledge.js?v=library-video-notes" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳至正文</a>
+  <header class="site-header">
+    <div class="site-bar">
+      <a class="brand" href="/knowledge" data-view=""><span class="brand-mark" aria-hidden="true">χ</span>WebXAS</a>
+      <nav aria-label="知识库快捷入口">
+        <a id="volume-shortcut" href="/knowledge#volume-directory">入门目录</a>
+        <a href="/auto">分析工作台 ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content" tabindex="-1">
+    <div id="browse-page">
+      <nav class="library-links" id="primary-navigation" aria-label="馆藏导航">
+        <a href="/knowledge?view=originals" data-view="originals">原始资料</a>
+        <a href="/knowledge?view=library" data-view="library">资料索引</a>
+        <a href="/knowledge?view=atlas" data-view="atlas">图谱与案例</a>
+        <a href="/knowledge?view=bookmarks" data-view="bookmarks">我的书签<span id="bookmark-count" hidden></span></a>
+      </nav>
+      <div class="search-area home-search" id="search-area">
+        <h1 id="home-title">XAS 知识图书馆</h1>
+        <form id="search-form" class="search-form" action="/knowledge" role="search">
+          <label class="sr-only" for="search">全馆搜索</label>
+          <div class="search-field">
+            <input id="search" name="q" type="search" maxlength="200" placeholder="搜索章节、术语或资料" autocomplete="off">
+            <button type="button" id="clear-search" class="icon-button" aria-label="清空搜索" hidden>×</button>
+          </div>
+          <button class="search-submit" type="submit">搜索</button>
+        </form>
+      </div>
+
+      <section id="home-view" class="home-content" aria-labelledby="home-title">
+        <section id="volume-directory" class="volume-directory" aria-labelledby="volume-heading">
+          <h2 id="volume-heading" tabindex="-1">入门目录</h2>
+          <div id="volumes" class="volumes" aria-busy="true"></div>
+        </section>
+        <div id="featured"></div>
+      </section>
+
+      <section id="results" class="results" aria-labelledby="results-title" tabindex="-1" hidden>
+        <header class="results-heading">
+          <h1 id="results-title">全馆搜索</h1>
+          <span id="result-count" role="status"></span>
+        </header>
+        <div class="filter-row" id="filter-row">
+          <label class="sr-only" for="topic-select">主题</label>
+          <select id="topic-select"><option value="">全部主题</option></select>
+          <div id="kinds" class="kind-filters" role="group" aria-label="资料类型"></div>
+          <button id="reset-filters" class="text-button" type="button" hidden>清除筛选</button>
+        </div>
+        <div id="empty" class="empty-state" hidden>
+          <h2 id="empty-title">没有找到相关资料</h2>
+          <p id="empty-description">试试更短的关键词，或放宽主题和类型。</p>
+          <button id="empty-reset" type="button">返回书库</button>
+        </div>
+        <div class="collection-layout">
+          <nav id="index-topics" class="index-topics" aria-labelledby="index-topics-title" hidden>
+            <h2 id="index-topics-title">主题</h2>
+            <div id="index-topic-buttons"></div>
+          </nav>
+          <div id="entry-grid" class="entry-grid" aria-busy="false"></div>
+        </div>
+        <nav id="pagination" class="pagination" aria-label="资料分页" hidden>
+          <button id="previous-page" type="button">← 上一页</button>
+          <span id="page-label"></span>
+          <button id="next-page" type="button">下一页 →</button>
+        </nav>
+      </section>
+      <div id="load-error" class="error-state" role="alert" hidden>
+        <h2>暂时无法加载资料</h2>
+        <p id="error-message"></p>
+        <button id="retry" type="button">重新加载</button>
+      </div>
+    </div>
+
+    <section id="reader" class="reader-page" aria-label="知识正文" hidden>
+      <div class="reading-progress" aria-hidden="true"><span id="reading-progress-bar"></span></div>
+      <div class="reader-toolbar">
+        <a id="close-reader" href="/knowledge" class="back-link">← 返回书库</a>
+        <div class="reader-tools">
+          <details id="toc-details" class="reader-toc-details" hidden>
+            <summary>本篇目录</summary>
+            <nav id="reader-toc" aria-label="本篇目录"></nav>
+          </details>
+          <details class="font-controls">
+            <summary>字号</summary>
+            <div class="font-options">
+              <button id="font-smaller" type="button" aria-label="缩小正文字号">A−</button>
+              <button id="font-larger" type="button" aria-label="放大正文字号">A+</button>
+            </div>
+          </details>
+          <button id="bookmark-entry" type="button" aria-pressed="false">加入书签</button>
+        </div>
+      </div>
+      <article id="reader-article">
+        <div id="reader-loading" class="loading-line" role="status">正在打开正文…</div>
+        <div id="reader-content" hidden></div>
+      </article>
+    </section>
+    <section id="original-reader" aria-label="原始资料阅览" hidden></section>
+  </main>
+
+  <dialog id="figure-viewer" aria-label="放大查看图件">
+    <div class="figure-viewer-toolbar">
+      <span>查看图件</span>
+      <button id="close-figure" class="icon-button" type="button" aria-label="关闭放大图件">×</button>
+    </div>
+    <img id="figure-full" alt="">
+    <p id="figure-caption"></p>
+  </dialog>
+  <p id="announcement" class="sr-only" role="status"></p>
+</body>
+</html>

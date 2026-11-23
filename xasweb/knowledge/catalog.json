@@ -1,0 +1,210 @@
+{
+  "version": "public-1",
+  "updated_at": "2026-11-23",
+  "topics": [
+    {
+      "id": "getting-started",
+      "title": "快速入门"
+    }
+  ],
+  "kinds": [
+    {
+      "id": "guide",
+      "title": "使用指南"
+    },
+    {
+      "id": "manual",
+      "title": "官方文档"
+    }
+  ],
+  "featured_ids": [
+    "guide-public-upload"
+  ],
+  "volumes": [
+    {
+      "id": "basics",
+      "title": "XAS 快速入门",
+      "chapters": [
+        {
+          "id": "guide-public-upload",
+          "title": "准备 XAS 输入",
+          "available": true
+        },
+        {
+          "id": "guide-public-processing",
+          "title": "记录归一化和背景处理",
+          "available": true
+        },
+        {
+          "id": "guide-public-fitting",
+          "title": "准备可审查的 EXAFS 拟合",
+          "available": true
+        }
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "id": "guide-public-upload",
+      "title": "准备 XAS 输入",
+      "kind": "guide",
+      "kind_label": "使用指南",
+      "subtype": "WebXAS 快速入门",
+      "topics": [
+        "getting-started"
+      ],
+      "summary": "导入前核对能量单位、吸收边和谱列含义。",
+      "authors": "WebXAS",
+      "year": null,
+      "read_status_label": "项目指南",
+      "reading_status": "",
+      "aliases": [],
+      "url": null,
+      "sources": [],
+      "sections": [
+        {
+          "title": "核对列含义",
+          "paragraphs": [
+            "区分已计算的 μ(E) 与 I₀、Iₜ、I_f 等探测器通道，保留表头、测量模式和能量单位。上传后核对映射与正负号，再解释谱形。"
+          ],
+          "bullets": [],
+          "citations": []
+        },
+        {
+          "title": "保留原始记录",
+          "paragraphs": [
+            "记录样品、吸收元素、吸收边、参考样和测量条件，保留原始数据副本。处理后的谱应附处理方法、单位和参数。"
+          ],
+          "bullets": [],
+          "citations": []
+        }
+      ]
+    },
+    {
+      "id": "guide-public-processing",
+      "title": "记录归一化和背景处理",
+      "kind": "guide",
+      "kind_label": "使用指南",
+      "subtype": "WebXAS 快速入门",
+      "topics": [
+        "getting-started"
+      ],
+      "summary": "记录 E₀、预边和后边区间、AUTOBK 参数及有效 k 范围。",
+      "authors": "WebXAS",
+      "year": null,
+      "read_status_label": "项目指南",
+      "reading_status": "",
+      "aliases": [],
+      "url": null,
+      "sources": [],
+      "sections": [
+        {
+          "title": "核对能量与拟合区间",
+          "paragraphs": [
+            "检查预边和后边区间确实被实测能量范围覆盖。归一化与背景处理后，回看 μ(E)、归一化谱和 χ(k) 的共同证据。"
+          ],
+          "bullets": [],
+          "citations": []
+        },
+        {
+          "title": "报告参数与单位",
+          "paragraphs": [
+            "记录 E₀、背景处理参数、变换窗口和 k 加权。报告相位未校正的 R 空间图时，说明峰位需要结合理论相位与拟合解释。"
+          ],
+          "bullets": [],
+          "citations": []
+        }
+      ]
+    },
+    {
+      "id": "guide-public-fitting",
+      "title": "准备可审查的 EXAFS 拟合",
+      "kind": "guide",
+      "kind_label": "使用指南",
+      "subtype": "WebXAS 快速入门",
+      "topics": [
+        "getting-started"
+      ],
+      "summary": "从有来源的 FEFF 路径和明确的参数约束开始。",
+      "authors": "WebXAS",
+      "year": null,
+      "read_status_label": "项目指南",
+      "reading_status": "",
+      "aliases": [],
+      "url": null,
+      "sources": [],
+      "sections": [
+        {
+          "title": "保留理论路径来源",
+          "paragraphs": [
+            "记录结构来源、吸收位点、单散射或多重散射路径及参数约束。比较模型前固定处理数据、拟合区间、窗口和误差约定。"
+          ],
+          "bullets": [],
+          "citations": []
+        },
+        {
+          "title": "检查拟合可解释性",
+          "paragraphs": [
+            "结合残差、参数相关性、独立点数和不确定度解释结果。拟合优度只在给定数据、模型和目标函数下有意义。"
+          ],
+          "bullets": [],
+          "citations": []
+        }
+      ]
+    },
+    {
+      "id": "manual-larch-official",
+      "title": "Larch 官方文档",
+      "kind": "manual",
+      "kind_label": "官方文档",
+      "subtype": "公开阅读索引",
+      "topics": [
+        "getting-started"
+      ],
+      "summary": "Larch 项目提供 XANES、EXAFS 和相关光谱分析文档。",
+      "authors": "Larch 项目",
+      "year": null,
+      "read_status_label": "公开链接",
+      "reading_status": "",
+      "aliases": [],
+      "url": "https://xraypy.github.io/xraylarch/",
+      "sources": [
+        {
+          "id": "larch-official",
+          "title": "Larch 官方文档",
+          "url": "https://xraypy.github.io/xraylarch/",
+          "locator": "Larch 文档入口",
+          "read_scope": "文档导航",
+          "access": "公开网页",
+          "checked_at": "2026-11-23"
+        }
+      ],
+      "sections": [
+        {
+          "title": "查阅源码项目文档",
+          "paragraphs": [
+            "查阅上游文档，了解数据处理、拟合及软件运行环境。"
+          ],
+          "bullets": [],
+          "citations": []
+        }
+      ]
+    }
+  ],
+  "originals": [
+    {
+      "id": "larch-docs",
+      "title": "Larch 官方文档",
+      "type": "website",
+      "url": "https://xraypy.github.io/xraylarch/",
+      "credit": "Larch 项目",
+      "version": "官方在线文档",
+      "license": "请参阅上游项目条款",
+      "notes": [],
+      "entry_ids": [
+        "manual-larch-official"
+      ]
+    }
+  ],
+  "assets": []
+}
