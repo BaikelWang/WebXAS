@@ -4,6 +4,7 @@ function fileURL(name) {return auto(`/deliveries/${encodeURIComponent(S.delivery
 function metricValue(m) {
   let value=typeof m.value==='number'?Number(m.value.toPrecision(7)).toString():typeof m.value==='object'?JSON.stringify(m.value):String(m.value??'');
   if(m.uncertainty!=null)value+=' ± '+m.uncertainty;
+  if(m.unit==='not_declared')return value+'（单位未记录）';
   return value+(m.unit&&m.unit!=='1'?' '+m.unit:'');
 }
 function moduleTitle(f) {

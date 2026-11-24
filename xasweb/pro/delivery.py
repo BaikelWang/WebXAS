@@ -247,6 +247,10 @@ def _methods(project,workflow,figures,missing,style):
 
 def _readme(project, workflow, records, missing):
     esc=lambda x:html.escape(str(x),quote=True)
+    def display_unit(unit):
+        if unit == 'not_declared':
+            return '（单位未记录）'
+        return '' if unit in (None, '1') else esc(unit)
     sections=[]
     for fig in records:
         links=' · '.join(f'<a href="{esc(path)}">{esc(path.rsplit(".",1)[-1].upper())}</a>' for path in fig['formats'])
@@ -255,7 +259,7 @@ def _readme(project, workflow, records, missing):
         from .figures.presentation import brief_insight
         display=brief_insight(insight,fig['family'])
         observations=esc(display['summary'])
-        metrics=''.join(f'<tr><th>{esc(m["label"])}</th><td>{esc(m["value"])} {esc(m["unit"])}</td><td>{esc(m["basis"])}</td></tr>'
+        metrics=''.join(f'<tr><th>{esc(m["label"])}</th><td>{esc(m["value"])} {display_unit(m["unit"])}</td><td>{esc(m["basis"])}</td></tr>'
                         for m in display['metrics'])
         limits=''.join(f'<li>{esc(text)}</li>' for text in display['notices'])
         basis=insight.get('method_basis') or {}

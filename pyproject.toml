@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xasweb-pilot"
-version = "0.5.2rc4"
+version = "0.5.2rc5"
 description = "An inspectable local web workflow for XAS reduction with Larch"
 requires-python = ">=3.12"
 dependencies = [

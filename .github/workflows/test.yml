@@ -39,8 +39,8 @@ jobs:
           python -m pip wheel --no-deps --wheel-dir dist .
           python -m pip install "dist/$(ls dist)[test]"
           python -m pip check
-      - name: Verify saved-style redraw and download behavior
-        run: node --test package/app/tests/browser/saved-style.test.cjs
+      - name: Verify workbench redraw, download and metric units
+        run: node --test package/app/tests/browser/saved-style.test.cjs package/app/tests/browser/metric-unit.test.cjs
       - name: Acquire checksummed public inputs
         run: python tools/fetch_test_inputs.py
       - name: Verify installed wheel outside checkout
